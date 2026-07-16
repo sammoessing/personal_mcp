@@ -1,0 +1,47 @@
+import { z } from "zod";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+import { textResult, errorResult, type ToolDefinition } from "@/lib/mcp/types";
+
+export const skillTools: ToolDefinition[] = [
+  {
+    name: "list_skills",
+    title: "List skills",
+    description: "List published, MCP-exposed Claude Skills from this Manifest library.",
+    inputSchema: {},
+    handler: async () => {
+      const supabase = createServiceRoleClient();
+      const { data, error } = await supabase
+        .from("skills")
+        .select("name, slug, description, version")
+        .eq("status", "published")
+        .eq("mcp_exposed", true)
+        .order("name");
+      if (error) return errorResult(error.message);
+      if (!data || data.length === 0) return textResult("No published skills yet.");
+      return textResult(
+        data.map((s) => `${s.name} (${s.slug}) v${s.version} — ${s.description}`).join("\n")
+      );
+    },
+  },
+  {
+    name: "get_skill",
+    title: "Get skill",
+    description: "Fetch a published, MCP-exposed skill's full content by slug.",
+    inputSchema: {
+      slug: z.string().describe("Skill slug, from list_skills"),
+    },
+    handler: async ({ slug }: { slug: string }) => {
+      const supabase = createServiceRoleClient();
+      const { data, error } = await supabase
+        .from("skills")
+        .select("name, content, version")
+        .eq("slug", slug)
+        .eq("status", "published")
+        .eq("mcp_exposed", true)
+        .maybeSingle();
+      if (error) return errorResult(error.message);
+      if (!data) return errorResult(`No published skill found for slug "${slug}".`);
+      return textResult(`# ${data.name} (v${data.version})\n\n${data.content}`);
+    },
+  },
+];
