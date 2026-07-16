@@ -4,6 +4,7 @@ import { CONNECTOR_REGISTRY, type ConnectorProvider } from "@/lib/connectors/reg
 import { getMcpEndpointUrl } from "@/lib/mcp-url";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { McpEndpointCard } from "@/components/dashboard/mcp-endpoint-card";
+import { McpClientConfig } from "@/components/dashboard/mcp-client-config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -54,10 +55,10 @@ export default async function McpGatewayPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <McpEndpointCard url={endpointUrl} />
+          <McpClientConfig url={endpointUrl} token={process.env.MCP_ACCESS_TOKEN ?? ""} />
           <p className="text-xs text-muted-foreground">
-            Streamable HTTP transport. Add an <code>Authorization: Bearer &lt;MCP_ACCESS_TOKEN&gt;</code>{" "}
-            header in your client config — {totalTools} tools and {publishedSkillCount ?? 0} published
-            skills are exposed here.
+            Streamable HTTP transport. Paste the config above into Claude Desktop or Claude Code —
+            {totalTools} tools and {publishedSkillCount ?? 0} published skills are exposed here.
           </p>
         </CardContent>
       </Card>
