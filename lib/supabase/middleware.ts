@@ -44,12 +44,18 @@ export async function updateSession(request: NextRequest) {
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    // Preserve where they were headed so the OAuth consent flow resumes after
+    // sign-in instead of dumping them on the dashboard mid-authorization.
+    url.searchParams.set("next", `${path}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 
   if (isAuthorized && path === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    const next = request.nextUrl.searchParams.get("next");
+    // Only same-origin relative paths, so ?next= can't be used as an open redirect.
+    url.pathname = next?.startsWith("/") && !next.startsWith("//") ? next.split("?")[0] : "/";
+    url.search = next?.includes("?") ? next.slice(next.indexOf("?")) : "";
     return NextResponse.redirect(url);
   }
 

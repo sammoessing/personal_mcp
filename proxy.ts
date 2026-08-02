@@ -8,12 +8,18 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * The MCP endpoint (/api/mcp, plus /api/sse and /api/message from the
-     * same [transport] route) authenticates itself via bearer token, not
-     * the Supabase cookie session — excluded here so MCP clients never hit
-     * the login redirect. Static assets are excluded for the same reason
-     * as any Next.js auth proxy guide.
+     * Excluded from the session gate:
+     * - api/mcp|sse|message — the MCP endpoint authenticates with a bearer
+     *   token, not the Supabase cookie, so clients must never be bounced to
+     *   the login page.
+     * - .well-known/* and api/oauth/(metadata|protected-resource|register|token)
+     *   — OAuth discovery, client registration, and token exchange are called
+     *   by machines with no browser session, and are unauthenticated by
+     *   design (see the note in the register route).
+     *
+     * /oauth/authorize is deliberately NOT excluded: it is the one part of the
+     * flow that must run as the signed-in user.
      */
-    "/((?!api/(?:mcp|sse|message)|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token)|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

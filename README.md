@@ -17,8 +17,10 @@ MCP is served via [`mcp-handler`](https://www.npmjs.com/package/mcp-handler) and
 2. In the SQL editor, run `db/migrations/0001_init.sql`. It creates all tables, the
    `append_audit_event` / `verify_audit_chain` functions that power the hash-chained audit trail,
    RLS policies, and seeds the 7 connector rows.
-   Then run `db/migrations/0002_brain.sql`, which adds the Brain (`brain_docs`, `brain_folders`)
-   and the skill visibility/usage columns.
+   Then run the remaining migrations in order: `0002_brain.sql` (the Brain, plus skill
+   visibility/usage columns), `0003_lock_down_rpc.sql` (revokes public EXECUTE on the
+   SECURITY DEFINER functions), and `0004_mcp_oauth.sql` (the OAuth server's client/code/token
+   tables).
 3. Under **Authentication → Providers**, make sure **Email** is enabled.
 4. Create your single user: **Authentication → Users → Add user**. Enter the same address you
    set as `ALLOWED_EMAIL`, choose a password, and tick **Auto Confirm User**. There is no
@@ -66,6 +68,12 @@ loads. The MCP endpoint is at `http://localhost:3000/api/mcp`.
 
 ### Connecting an MCP client
 
+**claude.ai (browser)** — add a custom connector pointing at `https://<your-domain>/api/mcp` and
+click Connect. It registers itself via Dynamic Client Registration, sends you to a consent screen
+on your own dashboard, and receives an OAuth token. No token to copy.
+
+**Claude Desktop / Claude Code** — paste the static token instead:
+
 ```json
 {
   "mcpServers": {
@@ -78,6 +86,16 @@ loads. The MCP endpoint is at `http://localhost:3000/api/mcp`.
   }
 }
 ```
+
+### How MCP auth works
+
+The endpoint accepts two credentials: an OAuth access token issued by this app's own
+authorization server (`lib/oauth/`, `app/api/oauth/`, `app/oauth/authorize`), or the static
+`MCP_ACCESS_TOKEN`. Browser clients can't hold a static secret, so they run the OAuth flow:
+discovery via `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`,
+Dynamic Client Registration (RFC 7591), then authorization-code with mandatory PKCE S256.
+Authorization codes are single-use and replaying one revokes the tokens it produced. Codes and
+tokens are stored only as SHA-256 hashes.
 
 ## How it's organized
 

@@ -22,6 +22,8 @@ export function eventLabel(eventType: string, payload: Record<string, unknown>):
       return `Brain doc "${payload.title}" deleted`;
     case "brain_folder_created":
       return `Brain folder "${payload.path}" created`;
+    case "mcp_client_authorized":
+      return `MCP client authorized (${payload.client_id})`;
     default:
       return eventType;
   }

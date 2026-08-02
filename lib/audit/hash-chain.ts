@@ -11,7 +11,8 @@ export type AuditEventType =
   | "brain_doc_updated"
   | "brain_doc_review_changed"
   | "brain_doc_deleted"
-  | "brain_folder_created";
+  | "brain_folder_created"
+  | "mcp_client_authorized";
 
 /**
  * Appends a row to the hash chain via the append_audit_event() Postgres
