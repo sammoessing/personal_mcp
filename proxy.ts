@@ -20,9 +20,13 @@ export const config = {
      *   redirects. It must run before sign-in, precisely so the parameters are
      *   captured ahead of any login round trip.
      *
+     * - oauth/error — must stay readable even when the failure was "you are
+     *   not signed in", otherwise the explanation is replaced by a login
+     *   redirect and the user learns nothing.
+     *
      * /oauth/authorize (the consent page) is deliberately NOT excluded: it is
      * the one part of the flow that must run as the signed-in user.
      */
-    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token|authorize)|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token|authorize)|oauth/error|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

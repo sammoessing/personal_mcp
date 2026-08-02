@@ -3,10 +3,6 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck } from "lucide-react";
 import {
-  approveAuthorizationAction,
-  denyAuthorizationAction,
-} from "@/lib/actions/oauth";
-import {
   PENDING_AUTH_COOKIE,
   type PendingAuthRequest,
 } from "@/app/api/oauth/authorize/route";
@@ -106,13 +102,20 @@ export default async function AuthorizePage() {
           </p>
         </div>
 
+        {/*
+          Plain HTML form posts to a route handler, not Server Actions: the
+          response is a cross-origin 303 back to the client's own callback,
+          which a route handler performs as a real HTTP redirect.
+        */}
         <div className="flex gap-2">
-          <form action={denyAuthorizationAction} className="flex-1">
+          <form method="POST" action="/api/oauth/authorize/decision" className="flex-1">
+            <input type="hidden" name="decision" value="deny" />
             <Button type="submit" variant="outline" className="w-full">
               Cancel
             </Button>
           </form>
-          <form action={approveAuthorizationAction} className="flex-1">
+          <form method="POST" action="/api/oauth/authorize/decision" className="flex-1">
+            <input type="hidden" name="decision" value="approve" />
             <Button type="submit" className="w-full">
               Authorize
             </Button>
