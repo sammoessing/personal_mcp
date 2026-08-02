@@ -8,12 +8,44 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function ErrorScreen({ message }: { message: string }) {
+/**
+ * Shows the parameters actually received alongside the failure. These are all
+ * non-secret by design (client_id, redirect_uri, state, and the PKCE
+ * code_challenge are public values), and without them a failure here is very
+ * hard to diagnose from the client side.
+ */
+function ErrorScreen({
+  message,
+  received,
+}: {
+  message: string;
+  received?: Record<string, string | undefined>;
+}) {
+  const entries = Object.entries(received ?? {});
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm text-center">
+      <div className="w-full max-w-lg text-center">
         <h1 className="text-lg font-semibold">Authorization failed</h1>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+
+        <div className="mt-6 rounded-md border bg-secondary/40 p-3 text-left">
+          <p className="mb-2 text-xs font-medium">Parameters received</p>
+          {entries.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              None — the request arrived with an empty query string.
+            </p>
+          ) : (
+            <dl className="space-y-1">
+              {entries.map(([key, value]) => (
+                <div key={key} className="flex gap-2 text-xs">
+                  <dt className="shrink-0 font-mono text-muted-foreground">{key}</dt>
+                  <dd className="min-w-0 flex-1 truncate font-mono">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -40,16 +72,26 @@ export default async function AuthorizePage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return <ErrorScreen message="You must be signed in to authorize a client." />;
+  if (!user) return <ErrorScreen message="You must be signed in to authorize a client." received={params} />;
 
-  if (responseType !== "code") {
-    return <ErrorScreen message="Only the authorization code flow is supported." />;
-  }
+  // Check for the core params first: if the query string arrived empty, saying
+  // so is far more useful than complaining about the response type.
   if (!clientId || !redirectUri) {
-    return <ErrorScreen message="Missing client_id or redirect_uri." />;
+    return <ErrorScreen message="Missing client_id or redirect_uri." received={params} />;
+  }
+  // Absent response_type is tolerated — the code flow is the only one this
+  // server implements, so there is nothing else it could have meant. An
+  // explicit non-"code" value (e.g. the legacy implicit flow) is still refused.
+  if (responseType !== undefined && responseType !== "code") {
+    return (
+      <ErrorScreen
+        message={`Unsupported response_type "${responseType}" — only the authorization code flow is supported.`}
+        received={params}
+      />
+    );
   }
   if (!codeChallenge || (codeChallengeMethod ?? "S256") !== "S256") {
-    return <ErrorScreen message="This server requires PKCE with code_challenge_method=S256." />;
+    return <ErrorScreen message="This server requires PKCE with code_challenge_method=S256." received={params} />;
   }
 
   const service = createServiceRoleClient();
@@ -59,12 +101,12 @@ export default async function AuthorizePage({
     .eq("client_id", clientId)
     .maybeSingle();
 
-  if (!client) return <ErrorScreen message="Unknown client. Try connecting again." />;
+  if (!client) return <ErrorScreen message="Unknown client. Try connecting again." received={params} />;
 
   // A mismatched redirect_uri is never bounced back to — that would turn this
   // endpoint into an open redirector.
   if (!client.redirect_uris.includes(redirectUri)) {
-    return <ErrorScreen message="redirect_uri does not match a registered value for this client." />;
+    return <ErrorScreen message="redirect_uri does not match a registered value for this client." received={params} />;
   }
 
   const requestedScope = scope || "mcp";
