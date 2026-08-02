@@ -11,8 +11,9 @@ export async function GET(request: Request) {
   return Response.json(
     {
       issuer: origin,
-      // A page, not an API route: it renders the sign-in/consent screen.
-      authorization_endpoint: `${origin}/oauth/authorize`,
+      // Captures the request parameters into a cookie, then hands off to the
+      // /oauth/authorize consent page (which may route via sign-in first).
+      authorization_endpoint: `${origin}/api/oauth/authorize`,
       token_endpoint: `${origin}/api/oauth/token`,
       registration_endpoint: `${origin}/api/oauth/register`,
       scopes_supported: [MCP_SCOPE],

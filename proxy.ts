@@ -16,10 +16,13 @@ export const config = {
      *   — OAuth discovery, client registration, and token exchange are called
      *   by machines with no browser session, and are unauthenticated by
      *   design (see the note in the register route).
+     * - api/oauth/authorize — only parks the request parameters in a cookie and
+     *   redirects. It must run before sign-in, precisely so the parameters are
+     *   captured ahead of any login round trip.
      *
-     * /oauth/authorize is deliberately NOT excluded: it is the one part of the
-     * flow that must run as the signed-in user.
+     * /oauth/authorize (the consent page) is deliberately NOT excluded: it is
+     * the one part of the flow that must run as the signed-in user.
      */
-    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token)|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token|authorize)|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
