@@ -6,7 +6,12 @@ export type AuditEventType =
   | "connector_disconnected"
   | "skill_created"
   | "skill_status_changed"
-  | "skill_mcp_exposure_changed";
+  | "skill_mcp_exposure_changed"
+  | "brain_doc_created"
+  | "brain_doc_updated"
+  | "brain_doc_review_changed"
+  | "brain_doc_deleted"
+  | "brain_folder_created";
 
 /**
  * Appends a row to the hash chain via the append_audit_event() Postgres

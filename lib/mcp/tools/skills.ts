@@ -41,6 +41,11 @@ export const skillTools: ToolDefinition[] = [
         .maybeSingle();
       if (error) return errorResult(error.message);
       if (!data) return errorResult(`No published skill found for slug "${slug}".`);
+
+      // Mirrors Manifest's usageCount/lastUsedAt so the Skills page can show
+      // which skills actually get picked up by clients.
+      await supabase.rpc("increment_skill_usage", { p_slug: slug });
+
       return textResult(`# ${data.name} (v${data.version})\n\n${data.content}`);
     },
   },

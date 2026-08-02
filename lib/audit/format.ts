@@ -12,6 +12,16 @@ export function eventLabel(eventType: string, payload: Record<string, unknown>):
       return `Skill "${payload.name}" set to ${payload.status}`;
     case "skill_mcp_exposure_changed":
       return `Skill "${payload.name}" ${payload.exposed ? "exposed to" : "hidden from"} MCP`;
+    case "brain_doc_created":
+      return `Brain doc "${payload.title}" created`;
+    case "brain_doc_updated":
+      return `Brain doc "${payload.title}" updated`;
+    case "brain_doc_review_changed":
+      return `Brain doc "${payload.title}" ${payload.reviewState}`;
+    case "brain_doc_deleted":
+      return `Brain doc "${payload.title}" deleted`;
+    case "brain_folder_created":
+      return `Brain folder "${payload.path}" created`;
     default:
       return eventType;
   }

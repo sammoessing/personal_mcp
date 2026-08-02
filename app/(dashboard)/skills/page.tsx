@@ -55,6 +55,24 @@ export default async function SkillsPage() {
                   <p className="truncate text-xs text-muted-foreground">
                     {skill.description || "No description"}
                   </p>
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="capitalize">{skill.visibility ?? "private"}</span>
+                    {(skill.tags ?? []).length > 0 && (
+                      <>
+                        <span>·</span>
+                        <span className="truncate">{(skill.tags as string[]).join(", ")}</span>
+                      </>
+                    )}
+                    {skill.usage_count > 0 && (
+                      <>
+                        <span>·</span>
+                        <span>
+                          used {skill.usage_count}
+                          {skill.last_used_at ? ` · last ${timeAgo(skill.last_used_at)} ago` : ""}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </Link>
                 <div className="flex shrink-0 items-center gap-4">
                   <span className="text-xs text-muted-foreground">v{skill.version}</span>

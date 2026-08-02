@@ -19,6 +19,8 @@ export default async function OverviewPage() {
   const [
     { count: skillCount },
     { count: mcpExposedSkillCount },
+    { count: brainDocCount },
+    { count: contextDocCount },
     { data: connectors },
     { data: liveSessions },
     { data: auditRows },
@@ -31,6 +33,15 @@ export default async function OverviewPage() {
       .select("id", { count: "exact", head: true })
       .eq("mcp_exposed", true)
       .eq("status", "published"),
+    supabase
+      .from("brain_docs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "active"),
+    supabase
+      .from("brain_docs")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", "context")
+      .eq("review_state", "approved"),
     supabase.from("connectors").select("provider, status"),
     supabase
       .from("sessions")
@@ -71,7 +82,12 @@ export default async function OverviewPage() {
         </CardContent>
       </Card>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard
+          label="Brain docs"
+          value={brainDocCount ?? 0}
+          subtitle={`${contextDocCount ?? 0} standing context`}
+        />
         <StatCard
           label="Skills"
           value={skillCount ?? 0}

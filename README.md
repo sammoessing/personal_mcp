@@ -17,6 +17,8 @@ MCP is served via [`mcp-handler`](https://www.npmjs.com/package/mcp-handler) and
 2. In the SQL editor, run `db/migrations/0001_init.sql`. It creates all tables, the
    `append_audit_event` / `verify_audit_chain` functions that power the hash-chained audit trail,
    RLS policies, and seeds the 7 connector rows.
+   Then run `db/migrations/0002_brain.sql`, which adds the Brain (`brain_docs`, `brain_folders`)
+   and the skill visibility/usage columns.
 3. Under **Authentication → Providers**, make sure Email (magic link) is enabled.
 4. Copy the Project URL, `anon` key, and `service_role` key into your env file (see below).
 
@@ -76,6 +78,11 @@ loads. The MCP endpoint is at `http://localhost:3000/api/mcp`.
 ## How it's organized
 
 - `app/(dashboard)/` — Overview, Skills, Brain, MCP Gateway, Connections, Vault, Audit pages.
+- `lib/brain/` + `lib/mcp/tools/brain.ts` — the Brain: a folder-organised doc library. Each doc is
+  either **context** (standing instructions) or **knowledge** (reference material), scoped
+  user/team/company and gated by a review state. Only `approved` + `mcp_exposed` docs are served
+  over MCP. `brain_context_get` merges every approved context doc with provenance headers so a
+  client can load your standing instructions in one call.
 - `app/api/[transport]/route.ts` — the MCP server endpoint (`/api/mcp`), bearer-token gated.
 - `app/api/connectors/[provider]/{authorize,callback,disconnect}` — OAuth flow per connector.
 - `lib/connectors/` — one file per connector: its OAuth token handling and its MCP tools.
