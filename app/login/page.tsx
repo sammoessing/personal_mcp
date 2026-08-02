@@ -1,38 +1,43 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
-    "idle"
-  );
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "signing-in" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setStatus("sending");
+    setStatus("signing-in");
     setErrorMessage("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setStatus("error");
-      setErrorMessage(error.message);
+      // Supabase returns the same generic error for a bad password and an
+      // unknown email, so don't imply which one was wrong.
+      setErrorMessage(
+        error.message === "Invalid login credentials"
+          ? "That email and password combination didn't work."
+          : error.message
+      );
       return;
     }
 
-    setStatus("sent");
+    // The session cookie is set by the browser client; refresh so the proxy
+    // and server components pick it up on the next request.
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -48,33 +53,40 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {status === "sent" ? (
-          <div className="rounded-lg border bg-card p-4 text-center text-sm">
-            Check <span className="font-medium">{email}</span> for a sign-in
-            link.
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            {status === "error" && (
-              <p className="text-sm text-destructive">{errorMessage}</p>
-            )}
-            <Button type="submit" disabled={status === "sending"}>
-              {status === "sending" ? "Sending link…" : "Send magic link"}
-            </Button>
-          </form>
-        )}
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          {status === "error" && (
+            <p className="text-sm text-destructive">{errorMessage}</p>
+          )}
+
+          <Button type="submit" disabled={status === "signing-in"}>
+            {status === "signing-in" ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
       </div>
     </div>
   );

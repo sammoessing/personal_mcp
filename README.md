@@ -19,7 +19,11 @@ MCP is served via [`mcp-handler`](https://www.npmjs.com/package/mcp-handler) and
    RLS policies, and seeds the 7 connector rows.
    Then run `db/migrations/0002_brain.sql`, which adds the Brain (`brain_docs`, `brain_folders`)
    and the skill visibility/usage columns.
-3. Under **Authentication → Providers**, make sure Email (magic link) is enabled.
+3. Under **Authentication → Providers**, make sure **Email** is enabled.
+4. Create your single user: **Authentication → Users → Add user**. Enter the same address you
+   set as `ALLOWED_EMAIL`, choose a password, and tick **Auto Confirm User**. There is no
+   public sign-up route — the dashboard is single-user by design, so the account is created
+   here rather than in the app.
 4. Copy the Project URL, `anon` key, and `service_role` key into your env file (see below).
 
 ## 2. Configure environment variables
@@ -49,7 +53,7 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:3000`, sign in with a magic link sent to `ALLOWED_EMAIL`, and the dashboard
+Visit `http://localhost:3000`, sign in with the email and password you created above, and the dashboard
 loads. The MCP endpoint is at `http://localhost:3000/api/mcp`.
 
 ## 4. Deploy
