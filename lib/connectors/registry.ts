@@ -104,13 +104,24 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
 
 export const CONNECTOR_LIST = Object.values(CONNECTOR_REGISTRY);
 
-export function isConnectorConfigured(provider: ConnectorProvider): boolean {
+/**
+ * The env vars that actually hold a connector's credentials, following
+ * `sharesCredentialsWith` — Gmail and Calendar are one Google OAuth app, so
+ * both resolve to GOOGLE_CLIENT_ID/SECRET rather than a name derived from the
+ * provider.
+ */
+export function connectorCredentialEnv(provider: ConnectorProvider): {
+  clientIdEnv: string;
+  clientSecretEnv: string;
+} {
   const def = CONNECTOR_REGISTRY[provider];
-  const clientIdEnv = def.sharesCredentialsWith
-    ? CONNECTOR_REGISTRY[def.sharesCredentialsWith].clientIdEnv
-    : def.clientIdEnv;
-  const clientSecretEnv = def.sharesCredentialsWith
-    ? CONNECTOR_REGISTRY[def.sharesCredentialsWith].clientSecretEnv
-    : def.clientSecretEnv;
+  const source = def.sharesCredentialsWith
+    ? CONNECTOR_REGISTRY[def.sharesCredentialsWith]
+    : def;
+  return { clientIdEnv: source.clientIdEnv, clientSecretEnv: source.clientSecretEnv };
+}
+
+export function isConnectorConfigured(provider: ConnectorProvider): boolean {
+  const { clientIdEnv, clientSecretEnv } = connectorCredentialEnv(provider);
   return Boolean(process.env[clientIdEnv] && process.env[clientSecretEnv]);
 }

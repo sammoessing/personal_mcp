@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace } from "@/lib/workspace/context";
-import { CONNECTOR_REGISTRY, isConnectorConfigured, type ConnectorProvider } from "@/lib/connectors/registry";
+import {
+  CONNECTOR_REGISTRY,
+  isConnectorConfigured,
+  connectorCredentialEnv,
+  type ConnectorProvider,
+} from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ConnectorCard } from "@/components/dashboard/connector-card";
 import { CheckCircle2, XCircle } from "lucide-react";
@@ -32,6 +37,7 @@ export default async function ConnectionsPage({
       accountLabel: row.account_label,
       lastError: row.last_error,
       configured: isConnectorConfigured(provider),
+      ...connectorCredentialEnv(provider),
     };
   });
 

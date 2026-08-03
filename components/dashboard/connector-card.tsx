@@ -16,6 +16,9 @@ export type ConnectorCardData = {
   accountLabel: string | null;
   lastError: string | null;
   configured: boolean;
+  /** Named explicitly rather than derived from the provider, which is wrong for the shared Google app. */
+  clientIdEnv: string;
+  clientSecretEnv: string;
 };
 
 export function ConnectorCard({ connector }: { connector: ConnectorCardData }) {
@@ -53,7 +56,7 @@ export function ConnectorCard({ connector }: { connector: ConnectorCardData }) {
             )}
             {!connector.configured && connector.status !== "connected" && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Set {connector.provider.toUpperCase()}_CLIENT_ID / _SECRET to enable.
+                Set {connector.clientIdEnv} / {connector.clientSecretEnv} to enable.
               </p>
             )}
             {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
