@@ -17,6 +17,11 @@ const buttonVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
+        // The one deliberately coloured action in an otherwise black-and-white
+        // UI: connecting an account is the step that leaves the app, so it is
+        // worth making unmistakable.
+        connect:
+          "bg-blue-600 text-white shadow-xs hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

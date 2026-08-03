@@ -25,6 +25,12 @@ export type ConnectorDefinition = {
   scope: ConnectorScope;
   /** OAuth scopes requested during authorize. */
   scopes: string[];
+  /**
+   * What those scopes mean, in words, for the consent dialog. Raw scope
+   * strings are unreadable ("https://www.googleapis.com/auth/gmail.readonly"),
+   * and nobody can give informed consent to a URL.
+   */
+  permissions: string[];
   authorizeUrl: string;
   tokenUrl: string;
   /** Env var names for this connector's OAuth app credentials. */
@@ -47,6 +53,10 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Repos, issues, and pull requests.",
     scope: "workspace",
     scopes: ["repo", "read:org", "read:user"],
+    permissions: [
+      "Read repositories, issues, and pull requests",
+      "Read your organisation and profile details",
+    ],
     authorizeUrl: "https://github.com/login/oauth/authorize",
     tokenUrl: "https://github.com/login/oauth/access_token",
     clientIdEnv: "GITHUB_CLIENT_ID",
@@ -58,6 +68,10 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Issues and projects.",
     scope: "workspace",
     scopes: ["read", "write"],
+    permissions: [
+      "Read issues, projects, and teams",
+      "Create and update issues",
+    ],
     authorizeUrl: "https://linear.app/oauth/authorize",
     tokenUrl: "https://api.linear.app/oauth/token",
     clientIdEnv: "LINEAR_CLIENT_ID",
@@ -69,6 +83,10 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Events and scheduling.",
     scope: "member",
     scopes: ["https://www.googleapis.com/auth/calendar"],
+    permissions: [
+      "Read your calendars and events",
+      "Create and update events on your behalf",
+    ],
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     clientIdEnv: "GOOGLE_CLIENT_ID",
@@ -80,6 +98,10 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Read and search email.",
     scope: "member",
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+    permissions: [
+      "Read and search your email",
+      "No sending — read-only access",
+    ],
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     clientIdEnv: "GOOGLE_CLIENT_ID",
@@ -92,6 +114,9 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Pages and databases.",
     scope: "workspace",
     scopes: [],
+    permissions: [
+      "Read pages and databases you share with the integration",
+    ],
     authorizeUrl: "https://api.notion.com/v1/oauth/authorize",
     tokenUrl: "https://api.notion.com/v1/oauth/token",
     clientIdEnv: "NOTION_CLIENT_ID",
@@ -103,6 +128,11 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Channels and messages.",
     scope: "workspace",
     scopes: ["channels:read", "chat:write", "users:read"],
+    permissions: [
+      "List channels and read their members",
+      "Post messages as the app",
+      "Read basic profile information",
+    ],
     authorizeUrl: "https://slack.com/oauth/v2/authorize",
     tokenUrl: "https://slack.com/api/oauth.v2.access",
     clientIdEnv: "SLACK_CLIENT_ID",
@@ -114,6 +144,10 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     description: "Servers and messages.",
     scope: "member",
     scopes: ["identify", "guilds"],
+    permissions: [
+      "Read your username and profile",
+      "List the servers you belong to",
+    ],
     authorizeUrl: "https://discord.com/api/oauth2/authorize",
     tokenUrl: "https://discord.com/api/oauth2/token",
     clientIdEnv: "DISCORD_CLIENT_ID",

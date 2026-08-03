@@ -46,6 +46,7 @@ export default async function ConnectionsPage({
       displayName: def.displayName,
       description: def.description,
       scope: def.scope,
+      permissions: def.permissions,
       status: (row?.status ?? "disconnected") as "connected" | "disconnected" | "error",
       accountLabel: row?.account_label ?? null,
       lastError: row?.last_error ?? null,
@@ -84,7 +85,11 @@ export default async function ConnectionsPage({
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {cards.map((connector) => (
-          <ConnectorCard key={connector.provider} connector={connector} />
+          <ConnectorCard
+            key={connector.provider}
+            connector={connector}
+            workspaceName={ws.name}
+          />
         ))}
       </div>
     </>
