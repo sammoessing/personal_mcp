@@ -1,13 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Upload } from "lucide-react";
-import { unzipSync, strFromU8 } from "fflate";
-import {
-  parseSkillMarkdown,
-  humanizeSkillName,
-  pickSkillFile,
-} from "@/lib/skills/parse";
+import { parseSkillMarkdown, humanizeSkillName } from "@/lib/skills/parse";
+import { snapshotDrop, readSkillFromDrop, type DropSnapshot } from "@/lib/skills/drop";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,52 +55,102 @@ export function SkillForm({
   const [content, setContent] = useState(initial?.content ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [dragging, setDragging] = useState(false);
   const [imported, setImported] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // dragenter/dragleave fire for every child element the cursor crosses, so a
+  // boolean flickers off as soon as you move over the textarea inside the drop
+  // zone. Counting enters against leaves keeps the overlay stable.
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
+
   /**
-   * Accepts either a bare SKILL.md or a zipped skill bundle. Frontmatter fills
-   * Title and Description, so a downloaded skill lands ready to save instead of
-   * needing its fields retyped.
+   * Without this, a drop that lands a few pixels outside the drop zone hits the
+   * document instead, and the browser's default is to *navigate away* to the
+   * dropped file — losing everything typed into the form.
    */
-  async function importSkillFile(file: File) {
+  useEffect(() => {
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
+  }, []);
+
+  /**
+   * Frontmatter fills Title and Description, so a downloaded skill lands ready
+   * to save instead of needing its fields retyped.
+   */
+  function applySkillMarkdown(markdown: string, label: string) {
+    const parsed = parseSkillMarkdown(markdown);
+    if (!parsed.body && !parsed.name) {
+      setError(`${label} looks empty — nothing to import from it.`);
+      return;
+    }
+    setContent(parsed.body);
+    // Only fill empty fields, so an import can't silently overwrite something
+    // already typed.
+    if (parsed.name && !name) setName(humanizeSkillName(parsed.name));
+    if (parsed.description && !description) setDescription(parsed.description);
+    setImported(label);
+  }
+
+  async function importSnapshot(snapshot: DropSnapshot) {
     setError(null);
     setImported(null);
     try {
-      let markdown: string;
-
-      if (file.name.toLowerCase().endsWith(".zip")) {
-        const buffer = new Uint8Array(await file.arrayBuffer());
-        const entries = unzipSync(buffer);
-        const target = pickSkillFile(Object.keys(entries));
-        if (!target) {
-          setError("That archive doesn't contain a SKILL.md.");
-          return;
-        }
-        markdown = strFromU8(entries[target]);
-      } else {
-        markdown = await file.text();
-      }
-
-      const parsed = parseSkillMarkdown(markdown);
-      setContent(parsed.body);
-      // Only fill empty fields, so an import can't silently overwrite something
-      // already typed.
-      if (parsed.name && !name) setName(humanizeSkillName(parsed.name));
-      if (parsed.description && !description) setDescription(parsed.description);
-      setImported(file.name);
-    } catch {
-      setError("Could not read that file. Drop a SKILL.md or a .zip skill bundle.");
+      const { markdown, label } = await readSkillFromDrop(snapshot);
+      applySkillMarkdown(markdown, label);
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not read that. Drop a SKILL.md, a .zip bundle, or the skill folder."
+      );
     }
+  }
+
+  /** The picker only ever yields plain files, so it reuses the same path. */
+  function importPickedFiles(files: File[]) {
+    void importSnapshot({ entries: [], files });
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    // A drop event only fires at all if dragover's default was prevented.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
     setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) void importSkillFile(file);
+    // Must read the DataTransfer synchronously — it is emptied once the handler
+    // returns.
+    void importSnapshot(snapshotDrop(e.dataTransfer));
   }
+
+  const dropHandlers = {
+    onDragEnter: handleDragEnter,
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
+  };
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -214,8 +260,8 @@ export function SkillForm({
             accept=".md,.markdown,.txt,.zip"
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void importSkillFile(file);
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) importPickedFiles(files);
               // Reset so re-picking the same file fires change again.
               e.target.value = "";
             }}
@@ -227,12 +273,7 @@ export function SkillForm({
             or hiding the text you are working on.
           */}
           <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
+            {...dropHandlers}
             className={cn(
               "relative rounded-md transition-colors",
               dragging && "ring-2 ring-ring ring-offset-2"
@@ -244,12 +285,15 @@ export function SkillForm({
               rows={18}
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              // A textarea has its own native file-drop behaviour, so it needs
+              // the handlers directly rather than relying on the wrapper.
+              {...dropHandlers}
               className="font-mono text-xs leading-relaxed"
               placeholder={SKILL_MD_PLACEHOLDER}
             />
             {dragging && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-background/85">
-                <p className="text-sm font-medium">Drop SKILL.md or a .zip bundle</p>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border-2 border-dashed border-ring bg-background/90">
+                <p className="text-sm font-medium">Drop SKILL.md, a .zip bundle, or a skill folder</p>
               </div>
             )}
           </div>

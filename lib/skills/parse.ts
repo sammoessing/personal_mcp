@@ -64,16 +64,20 @@ export function humanizeSkillName(name: string): string {
  * than an exact path, preferring the shallowest match.
  */
 export function pickSkillFile(paths: string[]): string | null {
-  const candidates = paths.filter((p) => {
-    const file = p.split("/").pop()?.toLowerCase() ?? "";
-    return file === "skill.md" && !p.startsWith("__MACOSX/");
-  });
-  if (candidates.length === 0) {
-    const anyMd = paths.filter(
-      (p) => p.toLowerCase().endsWith(".md") && !p.startsWith("__MACOSX/")
-    );
-    if (anyMd.length === 0) return null;
-    return anyMd.sort((a, b) => a.split("/").length - b.split("/").length)[0];
-  }
-  return candidates.sort((a, b) => a.split("/").length - b.split("/").length)[0];
+  // macOS zips carry a parallel __MACOSX tree of resource forks whose entries
+  // share the real filenames but hold binary junk. Match on any segment, since
+  // the folder can sit at any depth.
+  const usable = paths.filter(
+    (p) => !p.split("/").some((segment) => segment === "__MACOSX" || segment.startsWith("._"))
+  );
+  const byDepth = (a: string, b: string) => a.split("/").length - b.split("/").length;
+
+  const candidates = usable.filter(
+    (p) => (p.split("/").pop()?.toLowerCase() ?? "") === "skill.md"
+  );
+  if (candidates.length > 0) return candidates.sort(byDepth)[0];
+
+  const anyMd = usable.filter((p) => p.toLowerCase().endsWith(".md"));
+  if (anyMd.length === 0) return null;
+  return anyMd.sort(byDepth)[0];
 }
