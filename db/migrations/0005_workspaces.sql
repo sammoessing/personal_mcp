@@ -242,6 +242,7 @@ alter table workspaces        enable row level security;
 alter table workspace_members enable row level security;
 alter table workspace_invites enable row level security;
 
+-- Replaces the single-user "any authenticated session" policies from 0001/0002.
 drop policy if exists "authenticated full access" on skills;
 drop policy if exists "authenticated full access" on connectors;
 drop policy if exists "authenticated full access" on oauth_tokens;
@@ -251,35 +252,48 @@ drop policy if exists "authenticated full access" on audit_log;
 drop policy if exists "authenticated full access" on brain_docs;
 drop policy if exists "authenticated full access" on brain_folders;
 
+drop policy if exists "members read workspace" on workspaces;
 create policy "members read workspace" on workspaces
   for select using (is_workspace_member(id));
+drop policy if exists "admins update workspace" on workspaces;
 create policy "admins update workspace" on workspaces
   for update using (is_workspace_admin(id)) with check (is_workspace_admin(id));
 
+drop policy if exists "members read membership" on workspace_members;
 create policy "members read membership" on workspace_members
   for select using (is_workspace_member(workspace_id));
+drop policy if exists "admins manage membership" on workspace_members;
 create policy "admins manage membership" on workspace_members
   for all using (is_workspace_admin(workspace_id)) with check (is_workspace_admin(workspace_id));
 
+drop policy if exists "admins manage invites" on workspace_invites;
 create policy "admins manage invites" on workspace_invites
   for all using (is_workspace_admin(workspace_id)) with check (is_workspace_admin(workspace_id));
 
+drop policy if exists "workspace scoped" on skills;
 create policy "workspace scoped" on skills
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
+drop policy if exists "workspace scoped" on connectors;
 create policy "workspace scoped" on connectors
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
+drop policy if exists "workspace scoped" on sessions;
 create policy "workspace scoped" on sessions
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
+drop policy if exists "workspace scoped" on tool_calls;
 create policy "workspace scoped" on tool_calls
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
+drop policy if exists "workspace scoped" on audit_log;
 create policy "workspace scoped" on audit_log
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
+drop policy if exists "workspace scoped" on brain_docs;
 create policy "workspace scoped" on brain_docs
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
+drop policy if exists "workspace scoped" on brain_folders;
 create policy "workspace scoped" on brain_folders
   for all using (is_workspace_member(workspace_id)) with check (is_workspace_member(workspace_id));
 
 -- Connector credentials inherit their connector's workspace.
+drop policy if exists "workspace scoped" on oauth_tokens;
 create policy "workspace scoped" on oauth_tokens
   for all using (
     exists (
