@@ -16,7 +16,7 @@ export default async function McpGatewayPage() {
   const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
   const [endpointUrl, { data: connectors }, { count: publishedSkillCount }] = await Promise.all([
-    getMcpEndpointUrl(),
+    getMcpEndpointUrl(ws.slug),
     supabase.from("connectors").select("provider, status").eq("workspace_id", ws.id),
     supabase
       .from("skills")

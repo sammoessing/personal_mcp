@@ -23,25 +23,39 @@ const handler = createMcpHandler(
  * 2. The static MCP_ACCESS_TOKEN, for clients where you paste a header into a
  *    config file yourself (Claude Desktop, Claude Code).
  */
-async function verifyToken(_req: Request, bearerToken?: string) {
+async function verifyToken(req: Request, bearerToken?: string) {
   if (!bearerToken) return undefined;
+
+  // Each workspace has its own endpoint URL (?ws=<slug>) because MCP clients
+  // key connectors by URL. The slug is only a routing label — it never grants
+  // anything — but if present it must agree with the token, so a token issued
+  // for one workspace can't be used against another's URL.
+  const requestedSlug = new URL(req.url).searchParams.get("ws");
 
   const staticToken = process.env.MCP_ACCESS_TOKEN;
   if (staticToken && safeEqual(bearerToken, staticToken)) {
     // The static token predates workspaces, so it is pinned to one workspace by
     // slug rather than being allowed to reach all of them.
-    const workspaceId = await resolveStaticTokenWorkspace();
-    if (!workspaceId) return undefined;
+    const pinned = await resolveWorkspaceBySlug(
+      process.env.MCP_STATIC_TOKEN_WORKSPACE ?? "personal"
+    );
+    if (!pinned) return undefined;
+    if (requestedSlug && requestedSlug !== pinned.slug) return undefined;
     return {
       token: bearerToken,
       clientId: "manifest-static-token",
       scopes: [MCP_SCOPE],
-      extra: { workspaceId, userEmail: "static-token" },
+      extra: { workspaceId: pinned.id, userEmail: "static-token" },
     };
   }
 
   const grant = await resolveAccessToken(bearerToken);
   if (!grant?.workspace_id) return undefined;
+
+  if (requestedSlug) {
+    const requested = await resolveWorkspaceBySlug(requestedSlug);
+    if (!requested || requested.id !== grant.workspace_id) return undefined;
+  }
 
   return {
     token: bearerToken,
@@ -53,15 +67,15 @@ async function verifyToken(_req: Request, bearerToken?: string) {
   };
 }
 
-async function resolveStaticTokenWorkspace(): Promise<string | null> {
-  const slug = process.env.MCP_STATIC_TOKEN_WORKSPACE ?? "personal";
+async function resolveWorkspaceBySlug(slug: string) {
   const { data } = await createServiceRoleClient()
     .from("workspaces")
-    .select("id")
+    .select("id, slug")
     .eq("slug", slug)
     .maybeSingle();
-  return data?.id ?? null;
+  return data;
 }
+
 
 const authedHandler = withMcpAuth(handler, verifyToken, {
   required: true,

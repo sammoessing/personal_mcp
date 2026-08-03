@@ -63,7 +63,7 @@ export default async function OverviewPage() {
       .order("seq", { ascending: false })
       .limit(4),
     verifyAuditChain(ws.id),
-    getMcpEndpointUrl(),
+    getMcpEndpointUrl(ws.slug),
   ]);
 
   const connectedServers = (connectors ?? []).filter((c) => c.status === "connected").length;
