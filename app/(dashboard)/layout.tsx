@@ -1,6 +1,9 @@
-import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { listMyWorkspaces, getCurrentWorkspace } from "@/lib/workspace/context";
+import {
+  listMyWorkspaces,
+  getCurrentWorkspace,
+  getSessionUser,
+} from "@/lib/workspace/context";
 import { Topbar } from "@/components/dashboard/topbar";
 
 export default async function DashboardLayout({
@@ -8,9 +11,11 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const [{ data: { user } }, workspaces, current] = await Promise.all([
-    supabase.auth.getUser(),
+  // All three are request-cached, and getCurrentWorkspace reuses the same
+  // workspace list, so this resolves with one auth check and one query no
+  // matter how many of them the page below also asks for.
+  const [user, workspaces, current] = await Promise.all([
+    getSessionUser(),
     listMyWorkspaces(),
     getCurrentWorkspace(),
   ]);

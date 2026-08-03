@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -15,15 +16,33 @@ export type Workspace = {
 };
 
 /**
- * Every workspace the signed-in user belongs to. Read through the user's own
- * session so row-level security does the filtering — this never sees a
- * workspace they aren't a member of.
+ * The signed-in user, resolved once per request.
+ *
+ * auth.getUser() validates the token against Supabase's auth server, so it is a
+ * network round trip rather than a local decode. The layout and every page and
+ * action need the user, so without deduplication a single navigation paid for
+ * that several times over.
  */
-export async function listMyWorkspaces(): Promise<Workspace[]> {
+export const getSessionUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  return user;
+});
+
+/**
+ * Every workspace the signed-in user belongs to. Read through the user's own
+ * session so row-level security does the filtering — this never sees a
+ * workspace they aren't a member of.
+ *
+ * Cached per request: the layout renders the switcher from it, and each page
+ * resolves the current workspace from it, which previously ran the same query
+ * three times per navigation.
+ */
+export const listMyWorkspaces = cache(async (): Promise<Workspace[]> => {
+  const supabase = await createClient();
+  const user = await getSessionUser();
   if (!user) return [];
 
   // Branding columns arrived in migration 0006. If the database hasn't been
@@ -66,7 +85,7 @@ export async function listMyWorkspaces(): Promise<Workspace[]> {
     })
     .filter((w): w is Workspace => w !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
-}
+});
 
 /**
  * The workspace the dashboard is currently showing: whichever the cookie names,
@@ -74,7 +93,7 @@ export async function listMyWorkspaces(): Promise<Workspace[]> {
  * Membership is re-checked on every call, so a stale or forged cookie can never
  * select a workspace the user doesn't belong to.
  */
-export async function getCurrentWorkspace(): Promise<Workspace | null> {
+export const getCurrentWorkspace = cache(async (): Promise<Workspace | null> => {
   const workspaces = await listMyWorkspaces();
   if (workspaces.length === 0) return null;
 
@@ -82,7 +101,7 @@ export async function getCurrentWorkspace(): Promise<Workspace | null> {
   const preferred = cookieStore.get(WORKSPACE_COOKIE)?.value;
 
   return workspaces.find((w) => w.id === preferred) ?? workspaces[0];
-}
+});
 
 /** Throws rather than returning null, for pages that cannot render without one. */
 export async function requireCurrentWorkspace(): Promise<Workspace> {

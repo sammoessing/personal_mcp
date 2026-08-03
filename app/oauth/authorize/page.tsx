@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { listMyWorkspaces, getCurrentWorkspace } from "@/lib/workspace/context";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+import {
+  listMyWorkspaces,
+  getCurrentWorkspace,
+  getSessionUser,
+} from "@/lib/workspace/context";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck } from "lucide-react";
 import {
@@ -40,10 +44,7 @@ export default async function AuthorizePage() {
     return <ErrorScreen message="The authorization request was malformed. Try connecting again." />;
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) return <ErrorScreen message="You must be signed in to authorize a client." />;
 
   if (!pending.clientId || !pending.redirectUri) {
