@@ -60,9 +60,19 @@ export default async function McpGatewayPage() {
           <McpEndpointCard url={endpointUrl} />
           <McpClientConfig url={endpointUrl} token={process.env.MCP_ACCESS_TOKEN ?? ""} />
           <p className="text-xs text-muted-foreground">
-            Streamable HTTP transport. Paste the config above into Claude Desktop or Claude Code —
-            {totalTools} tools and {publishedSkillCount ?? 0} published skills are exposed here.
+            Streamable HTTP transport. {totalTools} tools and {publishedSkillCount ?? 0} published
+            skills are exposed to clients authorized for{" "}
+            <span className="font-medium text-foreground">{ws.name}</span>.
           </p>
+          <div className="rounded-md border bg-secondary/40 p-3 text-xs text-muted-foreground">
+            <p className="mb-1 font-medium text-foreground">Connecting to more than one workspace</p>
+            <p>
+              A token is bound to a single workspace, so add the connector once per workspace: switch
+              the workspace above, then connect from your client and this workspace will already be
+              selected on the consent screen. Keeping them as separate connections also stops one
+              client&apos;s knowledge from being mixed into answers about another.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

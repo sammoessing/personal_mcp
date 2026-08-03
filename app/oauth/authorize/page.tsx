@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { listMyWorkspaces } from "@/lib/workspace/context";
+import { listMyWorkspaces, getCurrentWorkspace } from "@/lib/workspace/context";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck } from "lucide-react";
 import {
@@ -74,6 +74,11 @@ export default async function AuthorizePage() {
   if (workspaces.length === 0) {
     return <ErrorScreen message="You are not a member of any workspace, so there is nothing to authorize." />;
   }
+  // Default to whichever workspace the dashboard is currently showing: when you
+  // set up one connection per workspace, switching first then connecting is the
+  // natural flow, and it avoids silently binding a token to the wrong tenant.
+  const current = await getCurrentWorkspace();
+  const defaultWorkspaceId = current?.id ?? workspaces[0].id;
 
   // A mismatched redirect_uri is never bounced back to — that would turn this
   // endpoint into an open redirector.
@@ -110,7 +115,7 @@ export default async function AuthorizePage() {
             <select
               id="workspace_id"
               name="workspace_id"
-              defaultValue={workspaces[0].id}
+              defaultValue={defaultWorkspaceId}
               className="border-input h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
             >
               {workspaces.map((w) => (
