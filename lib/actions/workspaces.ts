@@ -1,10 +1,11 @@
 "use server";
 
 import { randomBytes, createHash } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { appendAuditEvent } from "@/lib/audit/hash-chain";
+import { sendInviteEmail } from "@/lib/email/send";
 import {
   WORKSPACE_COOKIE,
   listMyWorkspaces,
@@ -31,7 +32,15 @@ export async function switchWorkspaceAction(workspaceId: string) {
   revalidatePath("/", "layout");
 }
 
-export async function inviteMemberAction(formData: FormData) {
+export type InviteResult = {
+  token: string;
+  inviteUrl: string;
+  emailed: boolean;
+  /** Why the email didn't go out, when it didn't. */
+  emailError?: string;
+};
+
+export async function inviteMemberAction(formData: FormData): Promise<InviteResult> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const role = String(formData.get("role") ?? "member") as WorkspaceRole;
   if (!email) throw new Error("Email is required.");
@@ -58,10 +67,32 @@ export async function inviteMemberAction(formData: FormData) {
   if (error) throw new Error(error.message);
 
   await appendAuditEvent(ws.id, "member_invited", { email, role });
+
+  // The origin has to come from the request headers: this runs on the server,
+  // where there is no window.location to build the link from.
+  const hdrs = await headers();
+  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3000";
+  const proto = hdrs.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const inviteUrl = `${proto}://${host}/invite/${token}`;
+
+  // Sending is attempted after the invite exists, so a mail failure costs you
+  // the email, not the invitation — the link still works.
+  const result = await sendInviteEmail({
+    to: email,
+    inviteUrl,
+    workspaceName: ws.name,
+    workspaceLogoUrl: ws.logoUrl,
+    invitedByEmail: user?.email ?? null,
+  });
+
   revalidatePath("/members");
 
-  // Surfaced in the UI to copy — there is no outbound email configured.
-  return token;
+  return {
+    token,
+    inviteUrl,
+    emailed: result.sent,
+    ...(result.sent ? {} : { emailError: result.reason }),
+  };
 }
 
 export async function revokeInviteAction(inviteId: string) {

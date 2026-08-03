@@ -21,7 +21,10 @@ Audit chains are per-workspace, so verifying one tenant's trail never reads anot
 and doc slugs are unique per workspace rather than globally.
 
 Members are invite-only: an admin creates an invite, and the link only works for the email address
-it was issued to. A `member` can read approved content and propose changes; `admin`/`owner` approve
+it was issued to. Set `RESEND_API_KEY` and `EMAIL_FROM` to have invitations emailed automatically —
+the sending domain must be verified in Resend, and until it is, Resend will only deliver to your own
+account address. Without those variables invites still work; the Members page just shows a link to
+send yourself. A `member` can read approved content and propose changes; `admin`/`owner` approve
 them and manage membership.
 
 ## Stack
@@ -39,7 +42,9 @@ MCP is served via [`mcp-handler`](https://www.npmjs.com/package/mcp-handler) and
    Then run the remaining migrations in order: `0002_brain.sql` (the Brain, plus skill
    visibility/usage columns), `0003_lock_down_rpc.sql` (revokes public EXECUTE on the
    SECURITY DEFINER functions), `0004_mcp_oauth.sql` (the OAuth server's client/code/token
-   tables), and `0005_workspaces.sql` (workspaces, membership, invites, and per-tenant RLS).
+   tables), `0005_workspaces.sql` (workspaces, membership, invites, and per-tenant RLS),
+   `0006_workspace_branding.sql` (per-workspace logo and description), and
+   `0007_fix_digest_search_path.sql` (lets the audit functions resolve pgcrypto's digest()).
 3. Under **Authentication → Providers**, make sure **Email** is enabled.
 4. Create your own account: **Authentication → Users → Add user**, choose a password, and tick
    **Auto Confirm User**. Migration `0005` makes that address an owner of every workspace.
@@ -60,6 +65,8 @@ cp .env.example .env.local
   with `openssl rand -base64 32`.
 - `MCP_ACCESS_TOKEN` — bearer token your MCP clients (Claude Desktop, Claude Code, etc.) send back
   to authenticate. Generate with `openssl rand -hex 32`.
+- `RESEND_API_KEY` / `EMAIL_FROM` — optional; enables invitation emails. See the note under
+  Workspaces and isolation for the domain-verification caveat.
 - One `_CLIENT_ID` / `_CLIENT_SECRET` pair per connector you want live. Each connector's "Connect"
   button on `/connections` stays disabled until both of its env vars are set, so you can wire these
   up incrementally rather than all at once. `.env.example` lists where to register each OAuth app
