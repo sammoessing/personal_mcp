@@ -8,8 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { SkillExposureToggle } from "@/components/dashboard/skill-exposure-toggle";
 import { timeAgo } from "@/lib/format";
+import { MCP_SERVED_SKILL_STATUSES } from "@/lib/mcp/tools/skills";
 
 export const dynamic = "force-dynamic";
+
+/** Mirrors the gate in lib/mcp/tools/skills.ts so the badge can't drift from reality. */
+function isLive(skill: { status: string; mcp_exposed: boolean }) {
+  return skill.mcp_exposed && MCP_SERVED_SKILL_STATUSES.includes(skill.status);
+}
 
 const STATUS_VARIANT = {
   draft: "outline",
@@ -84,6 +90,17 @@ export default async function SkillsPage() {
                     className="w-20 justify-center capitalize"
                   >
                     {skill.status}
+                  </Badge>
+                  <Badge
+                    variant={isLive(skill) ? "success" : "outline"}
+                    className="w-16 justify-center"
+                    title={
+                      isLive(skill)
+                        ? "Served to MCP clients"
+                        : "Not served: needs to be approved or published, and MCP-exposed"
+                    }
+                  >
+                    {isLive(skill) ? "Live" : "Not live"}
                   </Badge>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground">MCP</span>
