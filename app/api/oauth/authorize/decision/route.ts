@@ -104,6 +104,9 @@ export async function POST(request: Request) {
     code_challenge_method: "S256",
     scope: pending.scope,
     user_email: user.email!,
+    // Member-scoped connectors resolve by user id, so the grant has to carry
+    // who authorized it, not just which workspace.
+    user_id: user.id,
     expires_at: new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000).toISOString(),
   });
   if (insertError) {

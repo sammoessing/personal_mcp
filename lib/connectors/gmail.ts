@@ -14,7 +14,7 @@ export const gmailTools: ToolDefinition[] = [
       maxResults: z.number().int().min(1).max(25).default(10),
     },
     handler: async ({ query, maxResults }: { query: string; maxResults: number }, ctx: ToolContext) => {
-      const auth = await googleAuth(ctx.workspaceId, "gmail");
+      const auth = await googleAuth(ctx, "gmail");
       const gmail = google.gmail({ version: "v1", auth });
       const { data } = await gmail.users.messages.list({ userId: "me", q: query, maxResults });
       const messages = data.messages ?? [];
@@ -46,7 +46,7 @@ export const gmailTools: ToolDefinition[] = [
       messageId: z.string().describe("Gmail message id, from gmail_search_messages"),
     },
     handler: async ({ messageId }: { messageId: string }, ctx: ToolContext) => {
-      const auth = await googleAuth(ctx.workspaceId, "gmail");
+      const auth = await googleAuth(ctx, "gmail");
       const gmail = google.gmail({ version: "v1", auth });
       const { data } = await gmail.users.messages.get({ userId: "me", id: messageId, format: "full" });
       const headers = data.payload?.headers ?? [];

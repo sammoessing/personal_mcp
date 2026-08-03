@@ -13,6 +13,12 @@ export type ToolResult = {
  */
 export type ToolContext = {
   workspaceId: string;
+  /**
+   * The member the token was issued to. Null for the static server token,
+   * which has no member identity — member-scoped connectors refuse to resolve
+   * without one rather than falling back to somebody else's credentials.
+   */
+  userId: string | null;
   userEmail: string;
 };
 

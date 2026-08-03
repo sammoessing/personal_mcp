@@ -1,10 +1,10 @@
 import { Octokit } from "@octokit/rest";
 import { z } from "zod";
-import { getConnectorAccessToken } from "./tokens";
+import { getConnectorAccessToken, type ConnectorActor } from "./tokens";
 import { textResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
-async function client(workspaceId: string) {
-  const token = await getConnectorAccessToken(workspaceId, "github");
+async function client(actor: ConnectorActor) {
+  const token = await getConnectorAccessToken(actor, "github");
   return new Octokit({ auth: token });
 }
 
@@ -20,7 +20,7 @@ export const githubTools: ToolDefinition[] = [
       state: z.enum(["open", "closed", "all"]).default("open"),
     },
     handler: async ({ owner, repo, state }: { owner: string; repo: string; state: "open" | "closed" | "all" }, ctx: ToolContext) => {
-      const octokit = await client(ctx.workspaceId);
+      const octokit = await client(ctx);
       const { data } = await octokit.pulls.list({ owner, repo, state, per_page: 20 });
       if (data.length === 0) return textResult("No pull requests found.");
       const summary = data
@@ -40,7 +40,7 @@ export const githubTools: ToolDefinition[] = [
       state: z.enum(["open", "closed", "all"]).default("open"),
     },
     handler: async ({ owner, repo, state }: { owner: string; repo: string; state: "open" | "closed" | "all" }, ctx: ToolContext) => {
-      const octokit = await client(ctx.workspaceId);
+      const octokit = await client(ctx);
       const { data } = await octokit.issues.listForRepo({ owner, repo, state, per_page: 20 });
       const issues = data.filter((issue) => !issue.pull_request);
       if (issues.length === 0) return textResult("No issues found.");

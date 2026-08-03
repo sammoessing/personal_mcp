@@ -12,6 +12,7 @@ function contextFromAuth(authInfo: unknown): ToolContext {
   const extra = (authInfo as { extra?: Record<string, unknown> } | undefined)?.extra;
   const workspaceId = extra?.workspaceId;
   const userEmail = extra?.userEmail;
+  const userId = extra?.userId;
 
   if (typeof workspaceId !== "string" || workspaceId.length === 0) {
     throw new Error("This token is not bound to a workspace. Reconnect the client to authorize it.");
@@ -19,6 +20,7 @@ function contextFromAuth(authInfo: unknown): ToolContext {
 
   return {
     workspaceId,
+    userId: typeof userId === "string" && userId.length > 0 ? userId : null,
     userEmail: typeof userEmail === "string" ? userEmail : "unknown",
   };
 }

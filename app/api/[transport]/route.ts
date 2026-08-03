@@ -106,7 +106,9 @@ async function verifyToken(req: Request, bearerToken?: string) {
       token: bearerToken,
       clientId: "manifest-static-token",
       scopes: [MCP_SCOPE],
-      extra: { workspaceId: pinned.id, userEmail: "static-token" },
+      // No member identity: the static token belongs to the deployment, not a
+      // person, so member-scoped connectors are deliberately unreachable.
+      extra: { workspaceId: pinned.id, userId: null, userEmail: "static-token" },
     };
   }
 
@@ -124,7 +126,11 @@ async function verifyToken(req: Request, bearerToken?: string) {
     scopes: grant.scope ? grant.scope.split(" ") : [],
     // The tenant travels with the token; tools read it from here and never
     // from client-supplied arguments.
-    extra: { workspaceId: grant.workspace_id, userEmail: grant.user_email },
+    extra: {
+      workspaceId: grant.workspace_id,
+      userId: grant.user_id ?? null,
+      userEmail: grant.user_email,
+    },
   };
 }
 

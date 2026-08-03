@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { requireCurrentWorkspace } from "@/lib/workspace/context";
+import { requireCurrentWorkspace, getSessionUser } from "@/lib/workspace/context";
 import {
   CONNECTOR_REGISTRY,
+  CONNECTOR_LIST,
   isConnectorConfigured,
   connectorCredentialEnv,
   type ConnectorProvider,
@@ -19,27 +20,39 @@ export default async function ConnectionsPage({
 }) {
   const params = await searchParams;
   const ws = await requireCurrentWorkspace();
+  const user = await getSessionUser();
   const supabase = await createClient();
+
+  // Only rows this member is allowed to see: the workspace's shared
+  // connections, plus their own personal ones. A colleague's Gmail row is
+  // never fetched, so it cannot leak through the page either.
   const { data: connectors } = await supabase
     .from("connectors")
-    .select("provider, status, account_label, last_error")
+    .select("provider, status, account_label, last_error, user_id")
     .eq("workspace_id", ws.id)
-    .order("provider");
+    .or(`user_id.is.null,user_id.eq.${user?.id ?? ""}`);
 
-  const cards = (connectors ?? []).map((row) => {
-    const provider = row.provider as ConnectorProvider;
-    const def = CONNECTOR_REGISTRY[provider];
+  const rows = new Map(
+    (connectors ?? []).map((row) => [row.provider as ConnectorProvider, row])
+  );
+
+  // Driven by the registry, not the table: a per-member connector has no row
+  // until that person connects it, and the card still has to be there for them
+  // to click.
+  const cards = CONNECTOR_LIST.map((def) => {
+    const row = rows.get(def.provider);
     return {
-      provider,
+      provider: def.provider,
       displayName: def.displayName,
       description: def.description,
-      status: row.status as "connected" | "disconnected" | "error",
-      accountLabel: row.account_label,
-      lastError: row.last_error,
-      configured: isConnectorConfigured(provider),
-      ...connectorCredentialEnv(provider),
+      scope: def.scope,
+      status: (row?.status ?? "disconnected") as "connected" | "disconnected" | "error",
+      accountLabel: row?.account_label ?? null,
+      lastError: row?.last_error ?? null,
+      configured: isConnectorConfigured(def.provider),
+      ...connectorCredentialEnv(def.provider),
     };
-  });
+  }).sort((a, b) => a.displayName.localeCompare(b.displayName));
 
   return (
     <>

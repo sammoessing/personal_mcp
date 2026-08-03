@@ -1,10 +1,10 @@
 import { LinearClient } from "@linear/sdk";
 import { z } from "zod";
-import { getConnectorAccessToken } from "./tokens";
+import { getConnectorAccessToken, type ConnectorActor } from "./tokens";
 import { textResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
-async function client(workspaceId: string) {
-  const token = await getConnectorAccessToken(workspaceId, "linear");
+async function client(actor: ConnectorActor) {
+  const token = await getConnectorAccessToken(actor, "linear");
   return new LinearClient({ accessToken: token });
 }
 
@@ -18,7 +18,7 @@ export const linearTools: ToolDefinition[] = [
       maxResults: z.number().int().min(1).max(50).default(20),
     },
     handler: async ({ maxResults }: { maxResults: number }, ctx: ToolContext) => {
-      const linear = await client(ctx.workspaceId);
+      const linear = await client(ctx);
       const me = await linear.viewer;
       const assigned = await me.assignedIssues({ first: maxResults });
       if (assigned.nodes.length === 0) return textResult("No issues assigned to you.");
@@ -38,7 +38,7 @@ export const linearTools: ToolDefinition[] = [
       maxResults: z.number().int().min(1).max(50).default(20),
     },
     handler: async ({ query, maxResults }: { query: string; maxResults: number }, ctx: ToolContext) => {
-      const linear = await client(ctx.workspaceId);
+      const linear = await client(ctx);
       const result = await linear.searchIssues(query, { first: maxResults });
       if (result.nodes.length === 0) return textResult("No matching issues found.");
       const summary = result.nodes

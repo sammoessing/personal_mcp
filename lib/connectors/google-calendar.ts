@@ -20,7 +20,7 @@ export const googleCalendarTools: ToolDefinition[] = [
       calendarId: string;
       maxResults: number;
     }, ctx: ToolContext) => {
-      const auth = await googleAuth(ctx.workspaceId, "google_calendar");
+      const auth = await googleAuth(ctx, "google_calendar");
       const calendar = google.calendar({ version: "v3", auth });
       const { data } = await calendar.events.list({
         calendarId,
@@ -62,7 +62,7 @@ export const googleCalendarTools: ToolDefinition[] = [
       endIso: string;
       description?: string;
     }, ctx: ToolContext) => {
-      const auth = await googleAuth(ctx.workspaceId, "google_calendar");
+      const auth = await googleAuth(ctx, "google_calendar");
       const calendar = google.calendar({ version: "v3", auth });
       const { data } = await calendar.events.insert({
         calendarId,

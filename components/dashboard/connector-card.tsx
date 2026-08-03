@@ -6,12 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConnectorIcon } from "./connector-icon";
-import type { ConnectorProvider } from "@/lib/connectors/registry";
+import type { ConnectorProvider, ConnectorScope } from "@/lib/connectors/registry";
 
 export type ConnectorCardData = {
   provider: ConnectorProvider;
   displayName: string;
   description: string;
+  scope: ConnectorScope;
   status: "connected" | "disconnected" | "error";
   accountLabel: string | null;
   lastError: string | null;
@@ -48,6 +49,11 @@ export function ConnectorCard({ connector }: { connector: ConnectorCardData }) {
           <div>
             <p className="text-sm font-medium">{connector.displayName}</p>
             <p className="text-xs text-muted-foreground">{connector.description}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {connector.scope === "member"
+                ? "Your own account — private to you."
+                : "Shared by everyone in this workspace."}
+            </p>
             {connector.status === "connected" && connector.accountLabel && (
               <p className="mt-1 text-xs text-muted-foreground">{connector.accountLabel}</p>
             )}

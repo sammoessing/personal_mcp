@@ -1,6 +1,6 @@
 import { appendAuditEvent } from "@/lib/audit/hash-chain";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import type { ConnectorProvider } from "@/lib/connectors/registry";
+import { CONNECTOR_REGISTRY, type ConnectorProvider } from "@/lib/connectors/registry";
 import type { ToolContext } from "./types";
 
 type AnyHandler = (args: never, ctx: ToolContext) => Promise<unknown>;
@@ -33,12 +33,19 @@ export function withUsageTracking<H extends AnyHandler>(
 
         let connectorId: string | null = null;
         if (connectorProvider) {
-          const { data } = await supabase
+          // A per-member provider has one row per person, so (workspace, provider)
+          // alone matches several — narrow to the caller's own row, or the
+          // shared row for workspace-scoped providers.
+          let query = supabase
             .from("connectors")
             .select("id")
             .eq("workspace_id", ctx.workspaceId)
-            .eq("provider", connectorProvider)
-            .maybeSingle();
+            .eq("provider", connectorProvider);
+          query =
+            CONNECTOR_REGISTRY[connectorProvider].scope === "member"
+              ? query.eq("user_id", ctx.userId ?? "")
+              : query.is("user_id", null);
+          const { data } = await query.maybeSingle();
           connectorId = data?.id ?? null;
         }
 

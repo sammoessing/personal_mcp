@@ -7,10 +7,22 @@ export type ConnectorProvider =
   | "slack"
   | "discord";
 
+/**
+ * Who a connection belongs to.
+ *
+ * `workspace` — one shared connection the whole workspace uses. Right for
+ *   org-level accounts: a Slack workspace, a Notion teamspace, a GitHub org.
+ * `member` — each person connects their own account, and nobody else in the
+ *   workspace can read it. Right for personal accounts, where a shared
+ *   connection would quietly hand your inbox to your colleagues.
+ */
+export type ConnectorScope = "workspace" | "member";
+
 export type ConnectorDefinition = {
   provider: ConnectorProvider;
   displayName: string;
   description: string;
+  scope: ConnectorScope;
   /** OAuth scopes requested during authorize. */
   scopes: string[];
   authorizeUrl: string;
@@ -33,6 +45,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "github",
     displayName: "GitHub",
     description: "Repos, issues, and pull requests.",
+    scope: "workspace",
     scopes: ["repo", "read:org", "read:user"],
     authorizeUrl: "https://github.com/login/oauth/authorize",
     tokenUrl: "https://github.com/login/oauth/access_token",
@@ -43,6 +56,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "linear",
     displayName: "Linear",
     description: "Issues and projects.",
+    scope: "workspace",
     scopes: ["read", "write"],
     authorizeUrl: "https://linear.app/oauth/authorize",
     tokenUrl: "https://api.linear.app/oauth/token",
@@ -53,6 +67,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "google_calendar",
     displayName: "Google Calendar",
     description: "Events and scheduling.",
+    scope: "member",
     scopes: ["https://www.googleapis.com/auth/calendar"],
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
@@ -63,6 +78,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "gmail",
     displayName: "Gmail",
     description: "Read and search email.",
+    scope: "member",
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
@@ -74,6 +90,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "notion",
     displayName: "Notion",
     description: "Pages and databases.",
+    scope: "workspace",
     scopes: [],
     authorizeUrl: "https://api.notion.com/v1/oauth/authorize",
     tokenUrl: "https://api.notion.com/v1/oauth/token",
@@ -84,6 +101,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "slack",
     displayName: "Slack",
     description: "Channels and messages.",
+    scope: "workspace",
     scopes: ["channels:read", "chat:write", "users:read"],
     authorizeUrl: "https://slack.com/oauth/v2/authorize",
     tokenUrl: "https://slack.com/api/oauth.v2.access",
@@ -94,6 +112,7 @@ export const CONNECTOR_REGISTRY: Record<ConnectorProvider, ConnectorDefinition> 
     provider: "discord",
     displayName: "Discord",
     description: "Servers and messages.",
+    scope: "member",
     scopes: ["identify", "guilds"],
     authorizeUrl: "https://discord.com/api/oauth2/authorize",
     tokenUrl: "https://discord.com/api/oauth2/token",

@@ -103,7 +103,8 @@ export async function POST(request: Request) {
     clientId,
     authCode.user_email,
     authCode.scope,
-    authCode.workspace_id
+    authCode.workspace_id,
+    authCode.user_id ?? null
   );
 
   return Response.json(

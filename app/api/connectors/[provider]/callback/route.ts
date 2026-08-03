@@ -2,10 +2,13 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { CONNECTOR_REGISTRY, type ConnectorProvider } from "@/lib/connectors/registry";
 import { exchangeCodeForToken } from "@/lib/connectors/oauth";
-import { saveConnectorTokens } from "@/lib/connectors/tokens";
+import {
+  saveConnectorTokens,
+  setConnectorAccountLabel,
+  markConnectorError,
+} from "@/lib/connectors/tokens";
 import { appendAuditEvent } from "@/lib/audit/hash-chain";
-import { createServiceRoleClient } from "@/lib/supabase/server";
-import { requireCurrentWorkspace } from "@/lib/workspace/context";
+import { requireCurrentWorkspace, getSessionUser } from "@/lib/workspace/context";
 
 function redirectToConnections(
   origin: string,
@@ -46,20 +49,21 @@ export async function GET(
     return redirectToConnections(url.origin, provider, "error", "Invalid OAuth state");
   }
 
-  // Credentials are stored against the workspace the browser is currently in.
+  // Credentials are stored against the workspace the browser is currently in,
+  // and — for per-person connectors — against the member who authorized them.
   const ws = await requireCurrentWorkspace();
+  const user = await getSessionUser();
+  if (!user) {
+    return redirectToConnections(url.origin, provider, "error", "You must be signed in to connect.");
+  }
+  const actor = { workspaceId: ws.id, userId: user.id };
 
   try {
     const tokens = await exchangeCodeForToken(typedProvider, code, url.origin);
-    await saveConnectorTokens(ws.id, typedProvider, tokens);
+    await saveConnectorTokens(actor, typedProvider, tokens);
 
     if (tokens.accountLabel) {
-      const supabase = createServiceRoleClient();
-      await supabase
-        .from("connectors")
-        .update({ account_label: tokens.accountLabel })
-        .eq("workspace_id", ws.id)
-        .eq("provider", typedProvider);
+      await setConnectorAccountLabel(actor, typedProvider, tokens.accountLabel);
     }
 
     await appendAuditEvent(ws.id, "connector_connected", { provider: typedProvider });
@@ -69,12 +73,7 @@ export async function GET(
     return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "OAuth exchange failed";
-    const supabase = createServiceRoleClient();
-    await supabase
-      .from("connectors")
-      .update({ status: "error", last_error: message })
-      .eq("workspace_id", ws.id)
-      .eq("provider", typedProvider);
+    await markConnectorError(actor, typedProvider, message);
     return redirectToConnections(url.origin, provider, "error", message);
   }
 }
