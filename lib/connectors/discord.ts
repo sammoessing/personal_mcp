@@ -1,10 +1,10 @@
 import { getConnectorAccessToken } from "./tokens";
-import { textResult, type ToolDefinition } from "@/lib/mcp/types";
+import { textResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
 const API_BASE = "https://discord.com/api/v10";
 
-async function discordFetch(path: string) {
-  const token = await getConnectorAccessToken("discord");
+async function discordFetch(workspaceId: string, path: string) {
+  const token = await getConnectorAccessToken(workspaceId, "discord");
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -19,8 +19,8 @@ export const discordTools: ToolDefinition[] = [
     description: "List Discord servers (guilds) the connected account is a member of.",
     connector: "discord",
     inputSchema: {},
-    handler: async () => {
-      const guilds = (await discordFetch("/users/@me/guilds")) as Array<{ id: string; name: string }>;
+    handler: async (_args: unknown, ctx: ToolContext) => {
+      const guilds = (await discordFetch(ctx.workspaceId, "/users/@me/guilds")) as Array<{ id: string; name: string }>;
       if (guilds.length === 0) return textResult("No servers found.");
       const summary = guilds.map((g) => `${g.name} (${g.id})`).join("\n");
       return textResult(summary);
@@ -32,8 +32,8 @@ export const discordTools: ToolDefinition[] = [
     description: "Get the connected Discord account's profile.",
     connector: "discord",
     inputSchema: {},
-    handler: async () => {
-      const me = (await discordFetch("/users/@me")) as { username: string; id: string; email?: string };
+    handler: async (_args: unknown, ctx: ToolContext) => {
+      const me = (await discordFetch(ctx.workspaceId, "/users/@me")) as { username: string; id: string; email?: string };
       return textResult(`${me.username} (${me.id})${me.email ? ` — ${me.email}` : ""}`);
     },
   },

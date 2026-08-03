@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,10 +19,12 @@ const STATUS_VARIANT = {
 } as const;
 
 export default async function SkillsPage() {
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
   const { data: skills } = await supabase
     .from("skills")
     .select("*")
+    .eq("workspace_id", ws.id)
     .order("updated_at", { ascending: false });
 
   return (

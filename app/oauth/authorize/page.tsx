@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { listMyWorkspaces } from "@/lib/workspace/context";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck } from "lucide-react";
 import {
@@ -68,6 +69,12 @@ export default async function AuthorizePage() {
 
   if (!client) return <ErrorScreen message="Unknown client. Try connecting again." />;
 
+  // Only workspaces this user actually belongs to can be granted.
+  const workspaces = await listMyWorkspaces();
+  if (workspaces.length === 0) {
+    return <ErrorScreen message="You are not a member of any workspace, so there is nothing to authorize." />;
+  }
+
   // A mismatched redirect_uri is never bounced back to — that would turn this
   // endpoint into an open redirector.
   if (!client.redirect_uris.includes(pending.redirectUri)) {
@@ -90,37 +97,61 @@ export default async function AuthorizePage() {
           </p>
         </div>
 
-        <div className="mb-5 rounded-md border bg-secondary/40 p-3 text-xs text-muted-foreground">
-          <p className="mb-1 font-medium text-foreground">It will be able to:</p>
-          <ul className="list-inside list-disc space-y-0.5">
-            <li>Read your approved Brain docs and published Skills</li>
-            <li>Call tools for every connector you&apos;ve connected</li>
-          </ul>
-          <p className="mt-2">
-            Every call is recorded in your audit trail. You can revoke access any time from the
-            MCP Gateway page.
-          </p>
-        </div>
-
         {/*
           Plain HTML form posts to a route handler, not Server Actions: the
           response is a cross-origin 303 back to the client's own callback,
           which a route handler performs as a real HTTP redirect.
         */}
-        <div className="flex gap-2">
-          <form method="POST" action="/api/oauth/authorize/decision" className="flex-1">
-            <input type="hidden" name="decision" value="deny" />
-            <Button type="submit" variant="outline" className="w-full">
+        <form method="POST" action="/api/oauth/authorize/decision">
+          <div className="mb-4 flex flex-col gap-1.5">
+            <label htmlFor="workspace_id" className="text-sm font-medium">
+              Workspace
+            </label>
+            <select
+              id="workspace_id"
+              name="workspace_id"
+              defaultValue={workspaces[0].id}
+              className="border-input h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+            >
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              The token is bound to this workspace only. It cannot read any other workspace&apos;s
+              docs, skills, or connectors.
+            </p>
+          </div>
+
+          <div className="mb-5 rounded-md border bg-secondary/40 p-3 text-xs text-muted-foreground">
+            <p className="mb-1 font-medium text-foreground">It will be able to:</p>
+            <ul className="list-inside list-disc space-y-0.5">
+              <li>Read approved Brain docs and published Skills in that workspace</li>
+              <li>Call tools for connectors connected in that workspace</li>
+            </ul>
+            <p className="mt-2">
+              Every call is recorded in that workspace&apos;s audit trail. You can revoke access any
+              time from the MCP Gateway page.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              name="decision"
+              value="deny"
+              variant="outline"
+              className="flex-1"
+            >
               Cancel
             </Button>
-          </form>
-          <form method="POST" action="/api/oauth/authorize/decision" className="flex-1">
-            <input type="hidden" name="decision" value="approve" />
-            <Button type="submit" className="w-full">
+            <Button type="submit" name="decision" value="approve" className="flex-1">
               Authorize
             </Button>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );

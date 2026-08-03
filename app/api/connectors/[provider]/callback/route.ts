@@ -5,6 +5,7 @@ import { exchangeCodeForToken } from "@/lib/connectors/oauth";
 import { saveConnectorTokens } from "@/lib/connectors/tokens";
 import { appendAuditEvent } from "@/lib/audit/hash-chain";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 
 function redirectToConnections(
   origin: string,
@@ -45,19 +46,23 @@ export async function GET(
     return redirectToConnections(url.origin, provider, "error", "Invalid OAuth state");
   }
 
+  // Credentials are stored against the workspace the browser is currently in.
+  const ws = await requireCurrentWorkspace();
+
   try {
     const tokens = await exchangeCodeForToken(typedProvider, code, url.origin);
-    await saveConnectorTokens(typedProvider, tokens);
+    await saveConnectorTokens(ws.id, typedProvider, tokens);
 
     if (tokens.accountLabel) {
       const supabase = createServiceRoleClient();
       await supabase
         .from("connectors")
         .update({ account_label: tokens.accountLabel })
+        .eq("workspace_id", ws.id)
         .eq("provider", typedProvider);
     }
 
-    await appendAuditEvent("connector_connected", { provider: typedProvider });
+    await appendAuditEvent(ws.id, "connector_connected", { provider: typedProvider });
 
     const response = redirectToConnections(url.origin, provider, "connected");
     response.cookies.delete(`oauth_state_${provider}`);
@@ -68,6 +73,7 @@ export async function GET(
     await supabase
       .from("connectors")
       .update({ status: "error", last_error: message })
+      .eq("workspace_id", ws.id)
       .eq("provider", typedProvider);
     return redirectToConnections(url.origin, provider, "error", message);
   }

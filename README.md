@@ -1,9 +1,28 @@
-# Manifest — personal MCP dashboard
+# Manifest — multi-workspace MCP dashboard
 
-A single-user dashboard that exposes a real MCP server (`/api/mcp`) over Streamable HTTP, lets you
-connect the tools you use day to day (GitHub, Linear, Google Calendar, Gmail, Notion, Slack,
-Discord) via live OAuth, hosts a library of Claude Skills you develop over time, and keeps a
+A dashboard that exposes a real MCP server (`/api/mcp`) over Streamable HTTP, lets each workspace
+connect its own tools (GitHub, Linear, Google Calendar, Gmail, Notion, Slack, Discord) via live
+OAuth, hosts a Brain of context/knowledge docs and a library of Claude Skills, and keeps a
 tamper-evident, hash-chained audit log of every tool call and workflow event.
+
+## Workspaces and isolation
+
+Each client company is a **workspace** with its own brain docs, skills, connectors, credentials,
+audit chain, and members. Isolation is enforced in two independent layers:
+
+1. **Row-level security.** Every tenant table carries a `workspace_id`, and its policy admits a row
+   only when `is_workspace_member(workspace_id)` holds for the requesting user. A bug in the
+   application cannot leak across tenants for dashboard traffic — Postgres refuses the rows.
+2. **Token-bound MCP.** Each OAuth access token is bound to exactly one workspace at consent time,
+   after the server re-checks membership. Tool handlers read the workspace from the verified token
+   and never from tool arguments, so a client cannot name a workspace it wasn't granted.
+
+Audit chains are per-workspace, so verifying one tenant's trail never reads another's rows. Skill
+and doc slugs are unique per workspace rather than globally.
+
+Members are invite-only: an admin creates an invite, and the link only works for the email address
+it was issued to. A `member` can read approved content and propose changes; `admin`/`owner` approve
+them and manage membership.
 
 ## Stack
 
@@ -19,14 +38,13 @@ MCP is served via [`mcp-handler`](https://www.npmjs.com/package/mcp-handler) and
    RLS policies, and seeds the 7 connector rows.
    Then run the remaining migrations in order: `0002_brain.sql` (the Brain, plus skill
    visibility/usage columns), `0003_lock_down_rpc.sql` (revokes public EXECUTE on the
-   SECURITY DEFINER functions), and `0004_mcp_oauth.sql` (the OAuth server's client/code/token
-   tables).
+   SECURITY DEFINER functions), `0004_mcp_oauth.sql` (the OAuth server's client/code/token
+   tables), and `0005_workspaces.sql` (workspaces, membership, invites, and per-tenant RLS).
 3. Under **Authentication → Providers**, make sure **Email** is enabled.
-4. Create your single user: **Authentication → Users → Add user**. Enter the same address you
-   set as `ALLOWED_EMAIL`, choose a password, and tick **Auto Confirm User**. There is no
-   public sign-up route — the dashboard is single-user by design, so the account is created
-   here rather than in the app.
-4. Copy the Project URL, `anon` key, and `service_role` key into your env file (see below).
+4. Create your own account: **Authentication → Users → Add user**, choose a password, and tick
+   **Auto Confirm User**. Migration `0005` makes that address an owner of every workspace.
+   Everyone else joins by invite from the Members page — there is no public sign-up.
+5. Copy the Project URL, `anon` key, and `service_role` key into your env file (see below).
 
 ## 2. Configure environment variables
 
@@ -38,7 +56,6 @@ cp .env.example .env.local
 
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — from
   your Supabase project settings.
-- `ALLOWED_EMAIL` — the only email allowed to sign in (this is a single-user app).
 - `TOKEN_ENCRYPTION_KEY` — random secret used to encrypt connector OAuth tokens at rest. Generate
   with `openssl rand -base64 32`.
 - `MCP_ACCESS_TOKEN` — bearer token your MCP clients (Claude Desktop, Claude Code, etc.) send back

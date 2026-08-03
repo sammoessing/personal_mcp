@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { verifyAuditChain } from "@/lib/audit/hash-chain";
 import { eventLabel } from "@/lib/audit/format";
 import { getMcpEndpointUrl } from "@/lib/mcp-url";
@@ -14,6 +15,7 @@ import { timeAgo, isoMinutesAgo } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
   const [
@@ -27,39 +29,46 @@ export default async function OverviewPage() {
     verifyResult,
     endpointUrl,
   ] = await Promise.all([
-    supabase.from("skills").select("id", { count: "exact", head: true }),
+    supabase.from("skills").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id),
     supabase
       .from("skills")
       .select("id", { count: "exact", head: true })
+      .eq("workspace_id", ws.id)
       .eq("mcp_exposed", true)
       .eq("status", "published"),
     supabase
       .from("brain_docs")
       .select("id", { count: "exact", head: true })
+      .eq("workspace_id", ws.id)
       .eq("status", "active"),
     supabase
       .from("brain_docs")
       .select("id", { count: "exact", head: true })
+      .eq("workspace_id", ws.id)
       .eq("kind", "context")
       .eq("review_state", "approved"),
-    supabase.from("connectors").select("provider, status"),
+    supabase.from("connectors").select("provider, status").eq("workspace_id", ws.id),
+    // Active MCP clients, measured by tokens used recently. Token rows carry a
+    // workspace_id, so this count can never include another tenant's clients.
     supabase
-      .from("sessions")
-      .select("client_name")
-      .eq("status", "live")
-      .gte("last_seen_at", isoMinutesAgo(15)),
+      .from("mcp_oauth_tokens")
+      .select("client_id")
+      .eq("workspace_id", ws.id)
+      .eq("revoked", false)
+      .gte("last_used_at", isoMinutesAgo(15)),
     supabase
       .from("audit_log")
       .select("seq, event_type, payload, created_at")
+      .eq("workspace_id", ws.id)
       .order("seq", { ascending: false })
       .limit(4),
-    verifyAuditChain(),
+    verifyAuditChain(ws.id),
     getMcpEndpointUrl(),
   ]);
 
   const connectedServers = (connectors ?? []).filter((c) => c.status === "connected").length;
   const totalTools = 1 + ALL_TOOLS.length; // +1 for the built-in ping tool
-  const liveClients = new Set((liveSessions ?? []).map((s) => s.client_name));
+  const liveClients = new Set((liveSessions ?? []).map((s) => s.client_id));
 
   return (
     <>

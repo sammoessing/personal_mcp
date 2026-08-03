@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { hashSecret, randomToken, AUTH_CODE_TTL_SECONDS } from "@/lib/oauth/server";
 import { appendAuditEvent } from "@/lib/audit/hash-chain";
+import { getMembership } from "@/lib/workspace/context";
 import { PENDING_AUTH_COOKIE, type PendingAuthRequest } from "../route";
 
 /**
@@ -40,14 +41,14 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const approved = String(form.get("decision") ?? "") === "approve";
 
-  // Only the signed-in, allow-listed user can grant access.
+  // Must be signed in; which workspaces they may grant is checked below against
+  // real membership.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const allowedEmail = process.env.ALLOWED_EMAIL;
-  if (!user || (allowedEmail && user.email !== allowedEmail)) {
-    return errorRedirect(origin, "You are not signed in as the authorized user.");
+  if (!user) {
+    return errorRedirect(origin, "You are not signed in.");
   }
 
   const service = createServiceRoleClient();
@@ -81,10 +82,23 @@ export async function POST(request: Request) {
     return errorRedirect(origin, "The client did not supply a PKCE code_challenge.");
   }
 
+  // The workspace comes from the form, so it must be re-checked against actual
+  // membership — otherwise a crafted post could bind a token to a workspace the
+  // user has no access to.
+  const workspaceId = String(form.get("workspace_id") ?? "");
+  if (!workspaceId) {
+    return errorRedirect(origin, "No workspace was selected.");
+  }
+  const role = await getMembership(user.id, workspaceId);
+  if (!role) {
+    return errorRedirect(origin, "You are not a member of the selected workspace.");
+  }
+
   const code = randomToken();
   const { error: insertError } = await service.from("mcp_oauth_codes").insert({
     code_hash: hashSecret(code),
     client_id: pending.clientId,
+    workspace_id: workspaceId,
     redirect_uri: pending.redirectUri,
     code_challenge: pending.codeChallenge,
     code_challenge_method: "S256",
@@ -98,7 +112,7 @@ export async function POST(request: Request) {
 
   // Audit logging must never block the grant that already succeeded.
   try {
-    await appendAuditEvent("mcp_client_authorized", {
+    await appendAuditEvent(workspaceId, "mcp_client_authorized", {
       client_id: pending.clientId,
       scope: pending.scope,
     });

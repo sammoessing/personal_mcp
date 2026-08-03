@@ -6,6 +6,7 @@ import {
   Plug,
   KeyRound,
   ScrollText,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,4 +24,5 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Connections", href: "/connections", icon: Plug },
   { label: "Vault", href: "/vault", icon: KeyRound },
   { label: "Audit", href: "/audit", icon: ScrollText },
+  { label: "Members", href: "/members", icon: Users },
 ];

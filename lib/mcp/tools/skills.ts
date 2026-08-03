@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { textResult, errorResult, type ToolDefinition } from "@/lib/mcp/types";
+import { textResult, errorResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
 export const skillTools: ToolDefinition[] = [
   {
@@ -8,11 +8,12 @@ export const skillTools: ToolDefinition[] = [
     title: "List skills",
     description: "List published, MCP-exposed Claude Skills from this Manifest library.",
     inputSchema: {},
-    handler: async () => {
+    handler: async (_args: unknown, ctx: ToolContext) => {
       const supabase = createServiceRoleClient();
       const { data, error } = await supabase
         .from("skills")
         .select("name, slug, description, version")
+        .eq("workspace_id", ctx.workspaceId)
         .eq("status", "published")
         .eq("mcp_exposed", true)
         .order("name");
@@ -30,11 +31,12 @@ export const skillTools: ToolDefinition[] = [
     inputSchema: {
       slug: z.string().describe("Skill slug, from list_skills"),
     },
-    handler: async ({ slug }: { slug: string }) => {
+    handler: async ({ slug }: { slug: string }, ctx: ToolContext) => {
       const supabase = createServiceRoleClient();
       const { data, error } = await supabase
         .from("skills")
         .select("name, content, version")
+        .eq("workspace_id", ctx.workspaceId)
         .eq("slug", slug)
         .eq("status", "published")
         .eq("mcp_exposed", true)
@@ -44,7 +46,10 @@ export const skillTools: ToolDefinition[] = [
 
       // Mirrors Manifest's usageCount/lastUsedAt so the Skills page can show
       // which skills actually get picked up by clients.
-      await supabase.rpc("increment_skill_usage", { p_slug: slug });
+      await supabase.rpc("increment_skill_usage", {
+        p_workspace_id: ctx.workspaceId,
+        p_slug: slug,
+      });
 
       return textResult(`# ${data.name} (v${data.version})\n\n${data.content}`);
     },

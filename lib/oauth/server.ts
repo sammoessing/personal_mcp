@@ -51,7 +51,8 @@ export type IssuedTokens = {
 export async function issueTokens(
   clientId: string,
   userEmail: string,
-  scope: string
+  scope: string,
+  workspaceId: string
 ): Promise<IssuedTokens> {
   const supabase = createServiceRoleClient();
   const accessToken = randomToken();
@@ -62,6 +63,7 @@ export async function issueTokens(
     refresh_token_hash: hashSecret(refreshToken),
     client_id: clientId,
     user_email: userEmail,
+    workspace_id: workspaceId,
     scope,
     expires_at: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
   });
@@ -78,7 +80,7 @@ export async function resolveAccessToken(token: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
     .from("mcp_oauth_tokens")
-    .select("id, client_id, user_email, scope, expires_at, revoked")
+    .select("id, client_id, user_email, workspace_id, scope, expires_at, revoked")
     .eq("access_token_hash", hashSecret(token))
     .maybeSingle();
 
@@ -100,14 +102,14 @@ export async function rotateRefreshToken(refreshToken: string) {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
     .from("mcp_oauth_tokens")
-    .select("id, client_id, user_email, scope, revoked")
+    .select("id, client_id, user_email, workspace_id, scope, revoked")
     .eq("refresh_token_hash", hashSecret(refreshToken))
     .maybeSingle();
 
-  if (!data || data.revoked || !data.client_id) return null;
+  if (!data || data.revoked || !data.client_id || !data.workspace_id) return null;
 
   await supabase.from("mcp_oauth_tokens").update({ revoked: true }).eq("id", data.id);
-  return issueTokens(data.client_id, data.user_email, data.scope);
+  return issueTokens(data.client_id, data.user_email, data.scope, data.workspace_id);
 }
 
 export function oauthError(

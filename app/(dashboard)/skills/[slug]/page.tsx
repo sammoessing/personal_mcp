@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,9 @@ export default async function SkillDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
-  const { data: skill } = await supabase.from("skills").select("*").eq("slug", slug).maybeSingle();
+  const { data: skill } = await supabase.from("skills").select("*").eq("workspace_id", ws.id).eq("slug", slug).maybeSingle();
   if (!skill) notFound();
 
   const updateWithSlug = updateSkillAction.bind(null, slug);

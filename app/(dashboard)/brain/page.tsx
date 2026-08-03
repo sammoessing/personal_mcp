@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus, Folder, FileText, Compass } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,15 +36,17 @@ export default async function BrainPage({
   searchParams: Promise<{ folder?: string; kind?: string }>;
 }) {
   const { folder: activeFolder, kind: activeKind } = await searchParams;
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
   const [{ data: docs }, { data: folders }] = await Promise.all([
     supabase
       .from("brain_docs")
       .select("id, slug, title, kind, scope, content, review_state, updated_at, folder_id")
+      .eq("workspace_id", ws.id)
       .eq("status", "active")
       .order("updated_at", { ascending: false }),
-    supabase.from("brain_folders").select("id, path").order("path"),
+    supabase.from("brain_folders").select("id, path").eq("workspace_id", ws.id).order("path"),
   ]);
 
   const allDocs = (docs ?? []) as DocRow[];

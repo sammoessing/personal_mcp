@@ -6,6 +6,16 @@ export type ToolResult = {
   isError?: boolean;
 };
 
+/**
+ * The tenant a tool call runs against. Derived solely from the bearer token
+ * presented to the MCP endpoint — never from tool arguments — so a client
+ * cannot name a workspace it wasn't granted access to.
+ */
+export type ToolContext = {
+  workspaceId: string;
+  userEmail: string;
+};
+
 export type ToolDefinition = {
   name: string;
   title: string;
@@ -14,7 +24,7 @@ export type ToolDefinition = {
   connector?: ConnectorProvider;
   inputSchema: z.ZodRawShape;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: (args: any) => Promise<ToolResult>;
+  handler: (args: any, ctx: ToolContext) => Promise<ToolResult>;
 };
 
 export function textResult(text: string): ToolResult {

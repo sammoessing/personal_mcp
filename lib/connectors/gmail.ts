@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { z } from "zod";
 import { googleAuth } from "./google";
-import { textResult, type ToolDefinition } from "@/lib/mcp/types";
+import { textResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
 export const gmailTools: ToolDefinition[] = [
   {
@@ -13,8 +13,8 @@ export const gmailTools: ToolDefinition[] = [
       query: z.string().describe("Gmail search query, e.g. 'from:someone is:unread'"),
       maxResults: z.number().int().min(1).max(25).default(10),
     },
-    handler: async ({ query, maxResults }: { query: string; maxResults: number }) => {
-      const auth = await googleAuth("gmail");
+    handler: async ({ query, maxResults }: { query: string; maxResults: number }, ctx: ToolContext) => {
+      const auth = await googleAuth(ctx.workspaceId, "gmail");
       const gmail = google.gmail({ version: "v1", auth });
       const { data } = await gmail.users.messages.list({ userId: "me", q: query, maxResults });
       const messages = data.messages ?? [];
@@ -45,8 +45,8 @@ export const gmailTools: ToolDefinition[] = [
     inputSchema: {
       messageId: z.string().describe("Gmail message id, from gmail_search_messages"),
     },
-    handler: async ({ messageId }: { messageId: string }) => {
-      const auth = await googleAuth("gmail");
+    handler: async ({ messageId }: { messageId: string }, ctx: ToolContext) => {
+      const auth = await googleAuth(ctx.workspaceId, "gmail");
       const gmail = google.gmail({ version: "v1", auth });
       const { data } = await gmail.users.messages.get({ userId: "me", id: messageId, format: "full" });
       const headers = data.payload?.headers ?? [];

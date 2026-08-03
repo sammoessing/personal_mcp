@@ -27,6 +27,6 @@ export const config = {
      * /oauth/authorize (the consent page) is deliberately NOT excluded: it is
      * the one part of the flow that must run as the signed-in user.
      */
-    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token|authorize)|oauth/error|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/(?:mcp|sse|message)|api/oauth/(?:metadata|protected-resource|register|token|authorize)|oauth/error|api/invites/accept|\\.well-known|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

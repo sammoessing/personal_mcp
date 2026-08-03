@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { verifyAuditChain } from "@/lib/audit/hash-chain";
 import { eventLabel } from "@/lib/audit/format";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -18,20 +19,23 @@ type ToolCallRow = {
 };
 
 export default async function AuditPage() {
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
   const [{ data: auditRows }, { data: toolCalls }, verifyResult] = await Promise.all([
     supabase
       .from("audit_log")
       .select("seq, event_type, payload, created_at")
+      .eq("workspace_id", ws.id)
       .order("seq", { ascending: false })
       .limit(50),
     supabase
       .from("tool_calls")
       .select("tool_name, status, latency_ms, called_at")
+      .eq("workspace_id", ws.id)
       .order("called_at", { ascending: false })
       .limit(2000),
-    verifyAuditChain(),
+    verifyAuditChain(ws.id),
   ]);
 
   const usageByTool = new Map<

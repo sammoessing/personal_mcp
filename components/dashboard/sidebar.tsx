@@ -6,8 +6,16 @@ import { Waves } from "lucide-react";
 
 import { NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { WorkspaceSwitcher } from "./workspace-switcher";
+import type { Workspace } from "@/lib/workspace/context";
 
-export function Sidebar() {
+export function Sidebar({
+  workspaces,
+  current,
+}: {
+  workspaces: Workspace[];
+  current: Workspace | null;
+}) {
   const pathname = usePathname();
 
   return (
@@ -18,6 +26,12 @@ export function Sidebar() {
         </div>
         <span className="text-sm font-semibold">Manifest</span>
       </div>
+
+      {current && (
+        <div className="mb-4">
+          <WorkspaceSwitcher workspaces={workspaces} current={current} />
+        </div>
+      )}
 
       <nav className="flex flex-col gap-0.5">
         {NAV_ITEMS.map((item) => {

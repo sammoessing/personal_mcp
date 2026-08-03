@@ -3,29 +3,6 @@ import { registerTools } from "@/lib/mcp/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { resolveAccessToken, safeEqual, MCP_SCOPE } from "@/lib/oauth/server";
 
-/** Best-effort: powers the "Live sessions" stat. Never allowed to break the MCP request itself. */
-async function trackSession(sessionId: string | undefined, status: "live" | "closed", userAgent?: string) {
-  if (!sessionId) return;
-  try {
-    const supabase = createServiceRoleClient();
-    if (status === "live") {
-      await supabase.from("sessions").upsert({
-        id: sessionId,
-        client_name: userAgent || "Unknown client",
-        status: "live",
-        last_seen_at: new Date().toISOString(),
-      });
-    } else {
-      await supabase
-        .from("sessions")
-        .update({ status: "closed", last_seen_at: new Date().toISOString() })
-        .eq("id", sessionId);
-    }
-  } catch {
-    // Session tracking is best-effort telemetry, not a correctness requirement.
-  }
-}
-
 const handler = createMcpHandler(
   (server) => {
     registerTools(server);
@@ -34,13 +11,6 @@ const handler = createMcpHandler(
   {
     basePath: "/api",
     disableSse: true,
-    onEvent: (event) => {
-      if (event.type === "SESSION_STARTED") {
-        void trackSession(event.sessionId, "live", event.clientInfo?.userAgent);
-      } else if (event.type === "SESSION_ENDED") {
-        void trackSession(event.sessionId, "closed");
-      }
-    },
   }
 );
 
@@ -58,17 +28,39 @@ async function verifyToken(_req: Request, bearerToken?: string) {
 
   const staticToken = process.env.MCP_ACCESS_TOKEN;
   if (staticToken && safeEqual(bearerToken, staticToken)) {
-    return { token: bearerToken, clientId: "manifest-static-token", scopes: [MCP_SCOPE] };
+    // The static token predates workspaces, so it is pinned to one workspace by
+    // slug rather than being allowed to reach all of them.
+    const workspaceId = await resolveStaticTokenWorkspace();
+    if (!workspaceId) return undefined;
+    return {
+      token: bearerToken,
+      clientId: "manifest-static-token",
+      scopes: [MCP_SCOPE],
+      extra: { workspaceId, userEmail: "static-token" },
+    };
   }
 
   const grant = await resolveAccessToken(bearerToken);
-  if (!grant) return undefined;
+  if (!grant?.workspace_id) return undefined;
 
   return {
     token: bearerToken,
     clientId: grant.client_id ?? "unknown",
     scopes: grant.scope ? grant.scope.split(" ") : [],
+    // The tenant travels with the token; tools read it from here and never
+    // from client-supplied arguments.
+    extra: { workspaceId: grant.workspace_id, userEmail: grant.user_email },
   };
+}
+
+async function resolveStaticTokenWorkspace(): Promise<string | null> {
+  const slug = process.env.MCP_STATIC_TOKEN_WORKSPACE ?? "personal";
+  const { data } = await createServiceRoleClient()
+    .from("workspaces")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  return data?.id ?? null;
 }
 
 const authedHandler = withMcpAuth(handler, verifyToken, {

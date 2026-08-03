@@ -96,7 +96,15 @@ export async function POST(request: Request) {
     return oauthError("invalid_grant", "PKCE verification failed.");
   }
 
-  const tokens = await issueTokens(clientId, authCode.user_email, authCode.scope);
+  if (!authCode.workspace_id) {
+    return oauthError("invalid_grant", "Authorization code is not bound to a workspace.");
+  }
+  const tokens = await issueTokens(
+    clientId,
+    authCode.user_email,
+    authCode.scope,
+    authCode.workspace_id
+  );
 
   return Response.json(
     {

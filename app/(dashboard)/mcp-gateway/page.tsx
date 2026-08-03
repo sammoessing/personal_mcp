@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { ALL_TOOLS } from "@/lib/mcp/tools";
 import { CONNECTOR_REGISTRY, type ConnectorProvider } from "@/lib/connectors/registry";
 import { getMcpEndpointUrl } from "@/lib/mcp-url";
@@ -12,13 +13,15 @@ import { StatusDot } from "@/components/ui/status-dot";
 export const dynamic = "force-dynamic";
 
 export default async function McpGatewayPage() {
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
   const [endpointUrl, { data: connectors }, { count: publishedSkillCount }] = await Promise.all([
     getMcpEndpointUrl(),
-    supabase.from("connectors").select("provider, status"),
+    supabase.from("connectors").select("provider, status").eq("workspace_id", ws.id),
     supabase
       .from("skills")
       .select("id", { count: "exact", head: true })
+      .eq("workspace_id", ws.id)
       .eq("status", "published")
       .eq("mcp_exposed", true),
   ]);

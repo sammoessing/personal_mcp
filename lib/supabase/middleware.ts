@@ -1,7 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/auth-code-error"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth/callback",
+  "/auth/auth-code-error",
+  // Invited users follow this link before they belong to any workspace.
+  "/invite",
+];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -33,15 +39,13 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
-  const allowedEmail = process.env.ALLOWED_EMAIL;
-  const isAuthorized = !!user && (!allowedEmail || user.email === allowedEmail);
+  // Access is membership-based: being signed in is necessary but not
+  // sufficient. Page-level code re-derives the workspace and its role, and
+  // row-level security independently refuses rows from workspaces the user
+  // does not belong to.
+  const isAuthorized = !!user;
 
   if (!isAuthorized && !isPublic) {
-    if (user) {
-      // Signed in with Supabase but not the allowed email — drop the session
-      // rather than leaving them stuck logged-in-but-blocked.
-      await supabase.auth.signOut();
-    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // Preserve where they were headed so the OAuth consent flow resumes after

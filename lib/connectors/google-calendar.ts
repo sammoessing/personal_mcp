@@ -1,7 +1,7 @@
 import { google } from "googleapis";
 import { z } from "zod";
 import { googleAuth } from "./google";
-import { textResult, type ToolDefinition } from "@/lib/mcp/types";
+import { textResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
 export const googleCalendarTools: ToolDefinition[] = [
   {
@@ -19,8 +19,8 @@ export const googleCalendarTools: ToolDefinition[] = [
     }: {
       calendarId: string;
       maxResults: number;
-    }) => {
-      const auth = await googleAuth("google_calendar");
+    }, ctx: ToolContext) => {
+      const auth = await googleAuth(ctx.workspaceId, "google_calendar");
       const calendar = google.calendar({ version: "v3", auth });
       const { data } = await calendar.events.list({
         calendarId,
@@ -61,8 +61,8 @@ export const googleCalendarTools: ToolDefinition[] = [
       startIso: string;
       endIso: string;
       description?: string;
-    }) => {
-      const auth = await googleAuth("google_calendar");
+    }, ctx: ToolContext) => {
+      const auth = await googleAuth(ctx.workspaceId, "google_calendar");
       const calendar = google.calendar({ version: "v3", auth });
       const { data } = await calendar.events.insert({
         calendarId,

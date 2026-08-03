@@ -1,16 +1,17 @@
 import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { textResult, errorResult, type ToolDefinition } from "@/lib/mcp/types";
+import { textResult, errorResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 import { snippetOf } from "@/lib/brain/types";
 
 /**
  * Only approved, MCP-exposed, active docs ever leave the dashboard — drafts and
  * docs pending review stay internal.
  */
-function publishedDocs() {
+function publishedDocs(workspaceId: string) {
   return createServiceRoleClient()
     .from("brain_docs")
     .select("slug, title, kind, scope, content, updated_at, brain_folders(path)")
+    .eq("workspace_id", workspaceId)
     .eq("review_state", "approved")
     .eq("mcp_exposed", true)
     .eq("status", "active");
@@ -29,8 +30,8 @@ export const brainTools: ToolDefinition[] = [
     description:
       "Load the standing context for this workspace: every approved 'context' doc, merged with provenance headers. Call this once at the start of a session and treat the result as standing instructions.",
     inputSchema: {},
-    handler: async () => {
-      const { data, error } = await publishedDocs().eq("kind", "context").order("scope");
+    handler: async (_args: unknown, ctx: ToolContext) => {
+      const { data, error } = await publishedDocs(ctx.workspaceId).eq("kind", "context").order("scope");
       if (error) return errorResult(error.message);
       if (!data || data.length === 0) {
         return textResult("No standing context docs have been approved yet.");
@@ -67,8 +68,8 @@ export const brainTools: ToolDefinition[] = [
       folder?: string;
       kind?: "context" | "knowledge";
       scope?: "user" | "team" | "company";
-    }) => {
-      let query = publishedDocs().order("updated_at", { ascending: false }).limit(100);
+    }, ctx: ToolContext) => {
+      let query = publishedDocs(ctx.workspaceId).order("updated_at", { ascending: false }).limit(100);
       if (kind) query = query.eq("kind", kind);
       if (scope) query = query.eq("scope", scope);
 
@@ -103,15 +104,15 @@ export const brainTools: ToolDefinition[] = [
       query: z.string().describe("Search text"),
       maxResults: z.number().int().min(1).max(25).default(10),
     },
-    handler: async ({ query, maxResults }: { query: string; maxResults: number }) => {
-      const { data, error } = await publishedDocs()
+    handler: async ({ query, maxResults }: { query: string; maxResults: number }, ctx: ToolContext) => {
+      const { data, error } = await publishedDocs(ctx.workspaceId)
         .textSearch("title", query, { type: "websearch", config: "english" })
         .limit(maxResults);
 
       // Postgres FTS on title only misses body matches; fall back to ILIKE on content.
       let rows = data ?? [];
       if (!error && rows.length === 0) {
-        const { data: fallback } = await publishedDocs()
+        const { data: fallback } = await publishedDocs(ctx.workspaceId)
           .ilike("content", `%${query}%`)
           .limit(maxResults);
         rows = fallback ?? [];
@@ -133,8 +134,8 @@ export const brainTools: ToolDefinition[] = [
     inputSchema: {
       slug: z.string().describe("Doc slug, from brain_docs_list or brain_docs_search"),
     },
-    handler: async ({ slug }: { slug: string }) => {
-      const { data, error } = await publishedDocs().eq("slug", slug).maybeSingle();
+    handler: async ({ slug }: { slug: string }, ctx: ToolContext) => {
+      const { data, error } = await publishedDocs(ctx.workspaceId).eq("slug", slug).maybeSingle();
       if (error) return errorResult(error.message);
       if (!data) return errorResult(`No approved brain doc found for slug "${slug}".`);
 
@@ -168,7 +169,7 @@ export const brainTools: ToolDefinition[] = [
       kind: "context" | "knowledge";
       scope: "user" | "team" | "company";
       folder?: string;
-    }) => {
+    }, ctx: ToolContext) => {
       const supabase = createServiceRoleClient();
 
       let folderId: string | null = null;
@@ -176,11 +177,12 @@ export const brainTools: ToolDefinition[] = [
         const { data: existing } = await supabase
           .from("brain_folders")
           .select("id")
+          .eq("workspace_id", ctx.workspaceId)
           .eq("path", folder)
           .maybeSingle();
         folderId =
           existing?.id ??
-          (await supabase.from("brain_folders").insert({ path: folder }).select("id").single())
+          (await supabase.from("brain_folders").insert({ workspace_id: ctx.workspaceId, path: folder }).select("id").single())
             .data?.id ??
           null;
       }
@@ -192,6 +194,7 @@ export const brainTools: ToolDefinition[] = [
         .replace(/(^-|-$)/g, "");
 
       const { error } = await supabase.from("brain_docs").insert({
+        workspace_id: ctx.workspaceId,
         title,
         slug,
         content,
@@ -212,16 +215,17 @@ export const brainTools: ToolDefinition[] = [
     title: "List brain folders",
     description: "The brain's folder tree, as paths, with the number of approved docs filed in each.",
     inputSchema: {},
-    handler: async () => {
+    handler: async (_args: unknown, ctx: ToolContext) => {
       const supabase = createServiceRoleClient();
       const { data: folders, error } = await supabase
         .from("brain_folders")
         .select("id, path")
+        .eq("workspace_id", ctx.workspaceId)
         .order("path");
       if (error) return errorResult(error.message);
       if (!folders || folders.length === 0) return textResult("No folders yet — all docs are unfiled.");
 
-      const { data: docs } = await publishedDocs();
+      const { data: docs } = await publishedDocs(ctx.workspaceId);
       const counts = new Map<string, number>();
       for (const doc of docs ?? []) {
         const path = folderPathOf(doc);

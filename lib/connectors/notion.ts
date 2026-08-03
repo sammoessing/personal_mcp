@@ -1,10 +1,10 @@
 import { Client } from "@notionhq/client";
 import { z } from "zod";
 import { getConnectorAccessToken } from "./tokens";
-import { textResult, type ToolDefinition } from "@/lib/mcp/types";
+import { textResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
 
-async function client() {
-  const token = await getConnectorAccessToken("notion");
+async function client(workspaceId: string) {
+  const token = await getConnectorAccessToken(workspaceId, "notion");
   return new Client({ auth: token });
 }
 
@@ -29,8 +29,8 @@ export const notionTools: ToolDefinition[] = [
       query: z.string().describe("Search text"),
       maxResults: z.number().int().min(1).max(25).default(10),
     },
-    handler: async ({ query, maxResults }: { query: string; maxResults: number }) => {
-      const notion = await client();
+    handler: async ({ query, maxResults }: { query: string; maxResults: number }, ctx: ToolContext) => {
+      const notion = await client(ctx.workspaceId);
       const { results } = await notion.search({ query, page_size: maxResults });
       if (results.length === 0) return textResult("No results found.");
       const summary = results
@@ -51,8 +51,8 @@ export const notionTools: ToolDefinition[] = [
     inputSchema: {
       pageId: z.string().describe("Notion page id, from notion_search"),
     },
-    handler: async ({ pageId }: { pageId: string }) => {
-      const notion = await client();
+    handler: async ({ pageId }: { pageId: string }, ctx: ToolContext) => {
+      const notion = await client(ctx.workspaceId);
       const page = await notion.pages.retrieve({ page_id: pageId });
       const blocks = await notion.blocks.children.list({ block_id: pageId, page_size: 50 });
       const title = titleOf(page as unknown as Record<string, unknown>);

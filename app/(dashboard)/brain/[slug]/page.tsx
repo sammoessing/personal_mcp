@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,17 +22,19 @@ export default async function DocDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
   const { data: doc } = await supabase
     .from("brain_docs")
     .select("*")
+    .eq("workspace_id", ws.id)
     .eq("slug", slug)
     .maybeSingle<BrainDoc>();
   if (!doc) notFound();
 
   const [{ data: folders }, { data: folderRow }] = await Promise.all([
-    supabase.from("brain_folders").select("path").order("path"),
+    supabase.from("brain_folders").select("path").eq("workspace_id", ws.id).order("path"),
     doc.folder_id
       ? supabase.from("brain_folders").select("path").eq("id", doc.folder_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -41,7 +44,7 @@ export default async function DocDetailPage({
   // references are visible rather than silently dead.
   const linkedSlugs = extractWikiLinks(doc.content);
   const { data: linkedDocs } = linkedSlugs.length
-    ? await supabase.from("brain_docs").select("slug, title").in("slug", linkedSlugs)
+    ? await supabase.from("brain_docs").select("slug, title").eq("workspace_id", ws.id).in("slug", linkedSlugs)
     : { data: [] };
   const linkedBySlug = new Map((linkedDocs ?? []).map((d) => [d.slug, d.title]));
 

@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { decrypt, redact } from "@/lib/crypto";
 import { CONNECTOR_REGISTRY, type ConnectorProvider } from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -25,12 +26,14 @@ type OAuthTokenRow = {
 };
 
 export default async function VaultPage() {
+  const ws = await requireCurrentWorkspace();
   const supabase = createServiceRoleClient();
   const { data: rows } = await supabase
     .from("connectors")
     .select(
       "provider, status, connected_at, oauth_tokens(access_token_enc, refresh_token_enc, expires_at)"
     )
+    .eq("workspace_id", ws.id)
     .order("provider");
 
   return (

@@ -14,7 +14,7 @@ type RegistrationRequest = {
  *
  * Open registration is safe here because registering a client grants nothing on
  * its own: every client still has to drive a user through /api/oauth/authorize,
- * and that screen only ever authenticates the single ALLOWED_EMAIL account. A
+ * and that screen only grants workspaces the signed-in user is a member of. A
  * stranger who registers a client just gets a client_id they cannot use.
  */
 export async function POST(request: Request) {

@@ -1,27 +1,27 @@
 import { appendAuditEvent } from "@/lib/audit/hash-chain";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { ConnectorProvider } from "@/lib/connectors/registry";
+import type { ToolContext } from "./types";
 
-type AnyHandler = (args: unknown) => Promise<unknown>;
+type AnyHandler = (args: never, ctx: ToolContext) => Promise<unknown>;
 
 /**
- * Wraps an MCP tool handler so every invocation is recorded in tool_calls
- * and appended to the audit hash chain, regardless of which connector (or
- * no connector, for built-in tools) it belongs to. Tracking failures never
- * mask the tool's actual result or error.
+ * Wraps an MCP tool handler so every invocation is recorded in tool_calls and
+ * appended to that workspace's audit hash chain. Tracking failures never mask
+ * the tool's actual result or error.
  */
 export function withUsageTracking<H extends AnyHandler>(
   toolName: string,
   connectorProvider: ConnectorProvider | undefined,
   handler: H
 ): H {
-  return (async (args: unknown) => {
+  return (async (args: never, ctx: ToolContext) => {
     const startedAt = Date.now();
     let status: "success" | "error" = "success";
     let errorMessage: string | undefined;
 
     try {
-      return await handler(args);
+      return await handler(args, ctx);
     } catch (err) {
       status = "error";
       errorMessage = err instanceof Error ? err.message : String(err);
@@ -36,12 +36,14 @@ export function withUsageTracking<H extends AnyHandler>(
           const { data } = await supabase
             .from("connectors")
             .select("id")
+            .eq("workspace_id", ctx.workspaceId)
             .eq("provider", connectorProvider)
             .maybeSingle();
           connectorId = data?.id ?? null;
         }
 
         await supabase.from("tool_calls").insert({
+          workspace_id: ctx.workspaceId,
           tool_name: toolName,
           connector_id: connectorId,
           status,
@@ -49,7 +51,7 @@ export function withUsageTracking<H extends AnyHandler>(
           error_message: errorMessage,
         });
 
-        await appendAuditEvent("tool_call", {
+        await appendAuditEvent(ctx.workspaceId, "tool_call", {
           tool: toolName,
           connector: connectorProvider ?? null,
           status,

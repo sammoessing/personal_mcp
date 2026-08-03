@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { CONNECTOR_REGISTRY, isConnectorConfigured, type ConnectorProvider } from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ConnectorCard } from "@/components/dashboard/connector-card";
@@ -12,10 +13,12 @@ export default async function ConnectionsPage({
   searchParams: Promise<{ status?: string; provider?: string; message?: string }>;
 }) {
   const params = await searchParams;
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
   const { data: connectors } = await supabase
     .from("connectors")
     .select("provider, status, account_label, last_error")
+    .eq("workspace_id", ws.id)
     .order("provider");
 
   const cards = (connectors ?? []).map((row) => {

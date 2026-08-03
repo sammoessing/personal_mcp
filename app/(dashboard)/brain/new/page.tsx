@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,9 @@ import { createDocAction } from "@/lib/actions/brain";
 export const dynamic = "force-dynamic";
 
 export default async function NewDocPage() {
+  const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
-  const { data: folders } = await supabase.from("brain_folders").select("path").order("path");
+  const { data: folders } = await supabase.from("brain_folders").select("path").eq("workspace_id", ws.id).order("path");
 
   return (
     <>

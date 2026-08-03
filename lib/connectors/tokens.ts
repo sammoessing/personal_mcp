@@ -8,14 +8,31 @@ type TokenSet = {
   expiresAt?: Date;
 };
 
-export async function saveConnectorTokens(provider: ConnectorProvider, tokens: TokenSet) {
+/**
+ * Connector rows exist once per workspace, so every lookup here is keyed on
+ * (workspace_id, provider). A workspace can only ever reach its own
+ * credentials — there is no code path that resolves a connector by provider
+ * alone.
+ */
+async function connectorRow(workspaceId: string, provider: ConnectorProvider) {
   const supabase = createServiceRoleClient();
-  const { data: connector, error: connectorError } = await supabase
+  const { data } = await supabase
     .from("connectors")
-    .select("id")
+    .select("id, status")
+    .eq("workspace_id", workspaceId)
     .eq("provider", provider)
-    .single();
-  if (connectorError || !connector) throw new Error(`Unknown connector: ${provider}`);
+    .maybeSingle();
+  return data;
+}
+
+export async function saveConnectorTokens(
+  workspaceId: string,
+  provider: ConnectorProvider,
+  tokens: TokenSet
+) {
+  const supabase = createServiceRoleClient();
+  const connector = await connectorRow(workspaceId, provider);
+  if (!connector) throw new Error(`Unknown connector for this workspace: ${provider}`);
 
   const { error } = await supabase.from("oauth_tokens").upsert({
     connector_id: connector.id,
@@ -26,21 +43,20 @@ export async function saveConnectorTokens(provider: ConnectorProvider, tokens: T
   });
   if (error) throw error;
 
+  // Safe without a workspace filter: connector.id came from the scoped
+  // connectorRow() lookup above.
   await supabase
     .from("connectors")
     .update({ status: "connected", connected_at: new Date().toISOString(), last_error: null })
     .eq("id", connector.id);
 }
 
-export async function disconnectConnector(provider: ConnectorProvider) {
+export async function disconnectConnector(workspaceId: string, provider: ConnectorProvider) {
   const supabase = createServiceRoleClient();
-  const { data: connector } = await supabase
-    .from("connectors")
-    .select("id")
-    .eq("provider", provider)
-    .single();
+  const connector = await connectorRow(workspaceId, provider);
   if (!connector) return;
 
+  // Same here — connector.id is already resolved within this workspace.
   await supabase.from("oauth_tokens").delete().eq("connector_id", connector.id);
   await supabase
     .from("connectors")
@@ -48,17 +64,16 @@ export async function disconnectConnector(provider: ConnectorProvider) {
     .eq("id", connector.id);
 }
 
-/** Returns a valid access token for the connector, refreshing it first if it's expired and a refresh token is on file. */
-export async function getConnectorAccessToken(provider: ConnectorProvider): Promise<string> {
+/** Returns a valid access token for this workspace's connector, refreshing it if expired. */
+export async function getConnectorAccessToken(
+  workspaceId: string,
+  provider: ConnectorProvider
+): Promise<string> {
   const supabase = createServiceRoleClient();
-  const { data: connector } = await supabase
-    .from("connectors")
-    .select("id, status")
-    .eq("provider", provider)
-    .single();
-  if (!connector) throw new Error(`Unknown connector: ${provider}`);
+  const connector = await connectorRow(workspaceId, provider);
+  if (!connector) throw new Error(`Unknown connector for this workspace: ${provider}`);
   if (connector.status !== "connected") {
-    throw new Error(`${provider} is not connected. Connect it on the Connections page first.`);
+    throw new Error(`${provider} is not connected in this workspace. Connect it on the Connections page first.`);
   }
 
   const { data: tokenRow } = await supabase
@@ -66,7 +81,7 @@ export async function getConnectorAccessToken(provider: ConnectorProvider): Prom
     .select("access_token_enc, refresh_token_enc, expires_at")
     .eq("connector_id", connector.id)
     .maybeSingle();
-  if (!tokenRow) throw new Error(`${provider} has no stored credentials.`);
+  if (!tokenRow) throw new Error(`${provider} has no stored credentials in this workspace.`);
 
   const isExpired = tokenRow.expires_at
     ? new Date(tokenRow.expires_at).getTime() < Date.now() + 60_000
@@ -74,7 +89,7 @@ export async function getConnectorAccessToken(provider: ConnectorProvider): Prom
 
   if (isExpired && tokenRow.refresh_token_enc) {
     const refreshed = await refreshAccessToken(provider, decrypt(tokenRow.refresh_token_enc));
-    await saveConnectorTokens(provider, refreshed);
+    await saveConnectorTokens(workspaceId, provider, refreshed);
     return refreshed.accessToken;
   }
 
