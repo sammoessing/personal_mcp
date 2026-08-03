@@ -2,11 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { SkillForm } from "@/components/dashboard/skill-form";
 import { SkillStatusSelect } from "@/components/dashboard/skill-status-select";
 import { SkillExposureToggle } from "@/components/dashboard/skill-exposure-toggle";
 import { DeleteSkillButton } from "@/components/dashboard/delete-skill-button";
@@ -43,39 +39,18 @@ export default async function SkillDetailPage({
           </div>
         }
       />
-      <Card className="max-w-3xl">
-        <CardContent>
-          <form action={updateWithSlug} className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" defaultValue={skill.name} required />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="version">Version</Label>
-                <Input id="version" name="version" defaultValue={skill.version} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="description">Description</Label>
-              <Input id="description" name="description" defaultValue={skill.description} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="content">Content (markdown)</Label>
-              <Textarea
-                id="content"
-                name="content"
-                rows={16}
-                className="font-mono text-xs"
-                defaultValue={skill.content}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit">Save changes</Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      <SkillForm
+        action={updateWithSlug}
+        submitLabel="Save changes"
+        version={skill.version}
+        initial={{
+          name: skill.name,
+          description: skill.description,
+          visibility: skill.visibility,
+          tags: skill.tags,
+          content: skill.content,
+        }}
+      />
     </>
   );
 }
