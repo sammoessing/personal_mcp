@@ -89,14 +89,39 @@ async function collectEntries(
   return files;
 }
 
-async function markdownFromZip(file: File): Promise<string> {
-  const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
+/**
+ * Reads a file to markdown, unzipping it first when it is an archive.
+ *
+ * Detection is by content, not filename: every zip starts with the local file
+ * header magic `PK\x03\x04` (or the empty/spanned variants). An extension check
+ * is not good enough — a downloaded bundle can arrive named `skill.zip.download`,
+ * with the extension stripped, or renamed entirely, and a missed check dumps
+ * raw binary into the editor rather than failing loudly.
+ */
+async function readMarkdown(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isZip =
+    bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] < 0x09;
+
+  if (!isZip) {
+    // A NUL byte in the first block means this is not text at all. Without this
+    // check an unrecognised binary is decoded to mojibake and pasted into the
+    // editor, which looks like the import "worked".
+    if (bytes.subarray(0, 1024).includes(0)) {
+      throw new Error(
+        `${file.name} isn't a text file. Drop the SKILL.md, the .zip bundle, or the skill folder.`
+      );
+    }
+    return new TextDecoder().decode(bytes);
+  }
+
+  const entries = unzipSync(bytes);
   const target = pickSkillFile(Object.keys(entries));
   if (!target) throw new Error("That archive doesn't contain a SKILL.md.");
   return strFromU8(entries[target]);
 }
 
-const isZip = (name: string) => name.toLowerCase().endsWith(".zip");
+const looksZipped = (name: string) => name.toLowerCase().endsWith(".zip");
 
 /**
  * Resolves a drop to `{ markdown, label }`, or throws an `Error` whose message
@@ -117,10 +142,7 @@ export async function readSkillFromDrop(
       );
     }
     const file = await readFile(files.get(target)!);
-    return {
-      markdown: isZip(file.name) ? await markdownFromZip(file) : await file.text(),
-      label: target,
-    };
+    return { markdown: await readMarkdown(file), label: target };
   }
 
   // Prefer a SKILL.md when several loose files come in at once.
@@ -128,7 +150,7 @@ export async function readSkillFromDrop(
   const picked = pickSkillFile(names);
   const file =
     (picked ? snapshot.files[names.indexOf(picked)] : undefined) ??
-    snapshot.files.find((f) => isZip(f.name)) ??
+    snapshot.files.find((f) => looksZipped(f.name)) ??
     snapshot.files[0];
 
   if (!file) {
@@ -142,8 +164,5 @@ export async function readSkillFromDrop(
     );
   }
 
-  return {
-    markdown: isZip(file.name) ? await markdownFromZip(file) : await file.text(),
-    label: file.name,
-  };
+  return { markdown: await readMarkdown(file), label: file.name };
 }
