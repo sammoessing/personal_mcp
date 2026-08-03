@@ -108,3 +108,33 @@ export async function removeMemberAction(memberId: string) {
   await appendAuditEvent(ws.id, "member_removed", { member_id: memberId });
   revalidatePath("/members");
 }
+
+export async function updateWorkspaceBrandingAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const logoUrl = String(formData.get("logo_url") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  if (!name) throw new Error("Name is required.");
+
+  // Only https images, so a workspace logo can't be used to point clients at
+  // arbitrary schemes.
+  if (logoUrl && !/^https:\/\//i.test(logoUrl)) {
+    throw new Error("Logo URL must start with https://");
+  }
+
+  const ws = await requireCurrentWorkspace();
+  if (!isAdmin(ws.role)) throw new Error("Only admins can change workspace branding.");
+
+  const service = createServiceRoleClient();
+  const { error } = await service
+    .from("workspaces")
+    .update({
+      name,
+      logo_url: logoUrl || null,
+      description: description || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ws.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/", "layout");
+}

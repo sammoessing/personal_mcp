@@ -9,6 +9,8 @@ export type Workspace = {
   id: string;
   name: string;
   slug: string;
+  logoUrl: string | null;
+  description: string | null;
   role: WorkspaceRole;
 };
 
@@ -26,14 +28,27 @@ export async function listMyWorkspaces(): Promise<Workspace[]> {
 
   const { data } = await supabase
     .from("workspace_members")
-    .select("role, workspaces(id, name, slug)")
+    .select("role, workspaces(id, name, slug, logo_url, description)")
     .eq("user_id", user.id);
 
   return (data ?? [])
     .map((row) => {
-      const ws = row.workspaces as unknown as { id: string; name: string; slug: string } | null;
+      const ws = row.workspaces as unknown as {
+        id: string;
+        name: string;
+        slug: string;
+        logo_url: string | null;
+        description: string | null;
+      } | null;
       if (!ws) return null;
-      return { id: ws.id, name: ws.name, slug: ws.slug, role: row.role as WorkspaceRole };
+      return {
+        id: ws.id,
+        name: ws.name,
+        slug: ws.slug,
+        logoUrl: ws.logo_url,
+        description: ws.description,
+        role: row.role as WorkspaceRole,
+      };
     })
     .filter((w): w is Workspace => w !== null)
     .sort((a, b) => a.name.localeCompare(b.name));

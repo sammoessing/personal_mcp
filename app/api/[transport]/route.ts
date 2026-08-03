@@ -3,16 +3,65 @@ import { registerTools } from "@/lib/mcp/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { resolveAccessToken, safeEqual, MCP_SCOPE } from "@/lib/oauth/server";
 
-const handler = createMcpHandler(
-  (server) => {
-    registerTools(server);
-  },
-  { serverInfo: { name: "manifest-personal-mcp", version: "0.1.0" } },
-  {
-    basePath: "/api",
-    disableSse: true,
-  }
-);
+type WorkspaceIdentity = {
+  id: string;
+  slug: string;
+  name: string;
+  logo_url: string | null;
+  description: string | null;
+};
+
+async function resolveWorkspaceBySlug(slug: string): Promise<WorkspaceIdentity | null> {
+  const { data } = await createServiceRoleClient()
+    .from("workspaces")
+    .select("id, slug, name, logo_url, description")
+    .eq("slug", slug)
+    .maybeSingle();
+  return data;
+}
+
+/**
+ * One handler per workspace, so each connector announces itself with that
+ * workspace's own name and logo instead of a shared generic identity. Clients
+ * display `serverInfo`, so this is what makes four connections to the same
+ * deployment distinguishable.
+ *
+ * Cached per instance and keyed on the branding itself, so editing a name or
+ * logo takes effect without waiting for the instance to recycle.
+ */
+const handlerCache = new Map<string, (request: Request) => Promise<Response>>();
+
+function handlerFor(workspace: WorkspaceIdentity | null) {
+  const key = workspace
+    ? `${workspace.slug}|${workspace.name}|${workspace.logo_url ?? ""}`
+    : "__default__";
+
+  const cached = handlerCache.get(key);
+  if (cached) return cached;
+
+  const handler = createMcpHandler(
+    (server) => {
+      registerTools(server);
+    },
+    {
+      // mcp-handler types serverInfo as just {name, version}, but it forwards
+      // the object straight to McpServer, whose Implementation schema also
+      // carries title, description and icons. Cast so the richer identity
+      // actually reaches the client.
+      serverInfo: {
+        name: workspace ? workspace.slug : "manifest",
+        title: workspace ? `${workspace.name} · Manifest` : "Manifest",
+        version: "0.1.0",
+        ...(workspace?.description ? { description: workspace.description } : {}),
+        ...(workspace?.logo_url ? { icons: [{ src: workspace.logo_url }] } : {}),
+      } as { name: string; version: string },
+    },
+    { basePath: "/api", disableSse: true }
+  );
+
+  handlerCache.set(key, handler);
+  return handler;
+}
 
 /**
  * Two accepted credentials:
@@ -67,21 +116,23 @@ async function verifyToken(req: Request, bearerToken?: string) {
   };
 }
 
-async function resolveWorkspaceBySlug(slug: string) {
-  const { data } = await createServiceRoleClient()
-    .from("workspaces")
-    .select("id, slug")
-    .eq("slug", slug)
-    .maybeSingle();
-  return data;
+/**
+ * Picks the branded handler from the URL's workspace slug before auth runs.
+ * The slug only selects which identity to present — access is still decided by
+ * verifyToken, which rejects a token that doesn't belong to that workspace.
+ */
+async function route(request: Request): Promise<Response> {
+  const slug = new URL(request.url).searchParams.get("ws");
+  const workspace = slug ? await resolveWorkspaceBySlug(slug) : null;
+
+  const authed = withMcpAuth(handlerFor(workspace), verifyToken, {
+    required: true,
+    // Points 401s at our RFC 9728 metadata so clients can discover how to
+    // authenticate instead of just failing.
+    resourceMetadataPath: "/.well-known/oauth-protected-resource",
+  });
+
+  return authed(request);
 }
 
-
-const authedHandler = withMcpAuth(handler, verifyToken, {
-  required: true,
-  // Points 401s at our RFC 9728 metadata so clients can discover how to
-  // authenticate instead of just failing.
-  resourceMetadataPath: "/.well-known/oauth-protected-resource",
-});
-
-export { authedHandler as GET, authedHandler as POST, authedHandler as DELETE };
+export { route as GET, route as POST, route as DELETE };

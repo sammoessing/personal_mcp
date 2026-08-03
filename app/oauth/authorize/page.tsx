@@ -78,7 +78,8 @@ export default async function AuthorizePage() {
   // set up one connection per workspace, switching first then connecting is the
   // natural flow, and it avoids silently binding a token to the wrong tenant.
   const current = await getCurrentWorkspace();
-  const defaultWorkspaceId = current?.id ?? workspaces[0].id;
+  const defaultWorkspace = current ?? workspaces[0];
+  const defaultWorkspaceId = defaultWorkspace.id;
 
   // A mismatched redirect_uri is never bounced back to — that would turn this
   // endpoint into an open redirector.
@@ -92,9 +93,19 @@ export default async function AuthorizePage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md rounded-lg border p-6">
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShieldCheck className="size-4" />
-          </div>
+          {defaultWorkspace?.logoUrl ? (
+            // Arbitrary external host, so plain <img> rather than next/image.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={defaultWorkspace.logoUrl}
+              alt=""
+              className="size-12 rounded-lg border object-cover"
+            />
+          ) : (
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <ShieldCheck className="size-4" />
+            </div>
+          )}
           <h1 className="text-lg font-semibold">Authorize {client.client_name}</h1>
           <p className="text-sm text-muted-foreground">
             This will let it call your Manifest MCP server as{" "}
