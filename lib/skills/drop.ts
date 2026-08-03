@@ -17,6 +17,8 @@ import { pickSkillFile } from "@/lib/skills/parse";
 export type DropSnapshot = {
   entries: FileSystemEntry[];
   files: File[];
+  /** Kept only so a failed drop can say what it actually received. */
+  types: string[];
 };
 
 /**
@@ -31,7 +33,11 @@ export function snapshotDrop(dataTransfer: DataTransfer): DropSnapshot {
     const entry = item.webkitGetAsEntry?.();
     if (entry) entries.push(entry);
   }
-  return { entries, files: Array.from(dataTransfer.files ?? []) };
+  return {
+    entries,
+    files: Array.from(dataTransfer.files ?? []),
+    types: Array.from(dataTransfer.types ?? []),
+  };
 }
 
 function readFile(entry: FileSystemFileEntry): Promise<File> {
@@ -126,7 +132,14 @@ export async function readSkillFromDrop(
     snapshot.files[0];
 
   if (!file) {
-    throw new Error("Nothing readable in that drop. Drop a SKILL.md file, .zip bundle, or folder.");
+    // Dragging from a browser tab, a download shelf, or a cloud-storage folder
+    // hands over a URL or plain text rather than a file, so name what arrived —
+    // otherwise this failure is indistinguishable from nothing happening.
+    const saw = snapshot.types.length > 0 ? snapshot.types.join(", ") : "nothing";
+    throw new Error(
+      `No file in that drop — the browser handed over ${saw}. ` +
+        "Drag the skill from a file explorer, or click the box to browse."
+    );
   }
 
   return {

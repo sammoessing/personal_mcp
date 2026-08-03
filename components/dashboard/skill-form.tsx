@@ -114,7 +114,7 @@ export function SkillForm({
 
   /** The picker only ever yields plain files, so it reuses the same path. */
   function importPickedFiles(files: File[]) {
-    void importSnapshot({ entries: [], files });
+    void importSnapshot({ entries: [], files, types: [] });
   }
 
   function handleDragEnter(e: React.DragEvent) {
@@ -239,19 +239,9 @@ export function SkillForm({
         <CardContent className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor="content">SKILL.md — agent instructions</Label>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                <Upload className="size-3" />
-                Import file
-              </button>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {content.length.toLocaleString()} chars
-              </span>
-            </div>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {content.length.toLocaleString()} chars
+            </span>
           </div>
 
           <input
@@ -268,9 +258,34 @@ export function SkillForm({
           />
 
           {/*
-            The drop target wraps the editor rather than replacing it, so a file
-            can be dropped at any point without clearing what is already typed
-            or hiding the text you are working on.
+            An explicit dropzone, because a drop target that looks like a plain
+            textarea is undiscoverable — there is nothing telling you it will
+            accept a file. Clicking it opens the picker, so the same box covers
+            both routes.
+          */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            {...dropHandlers}
+            className={cn(
+              "flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed px-4 py-6 text-center transition-colors",
+              dragging
+                ? "border-ring bg-secondary/60"
+                : "border-input hover:border-ring/60 hover:bg-secondary/30"
+            )}
+          >
+            <Upload className="size-5 text-muted-foreground" />
+            <span className="text-sm font-medium">
+              {dragging ? "Drop it here" : "Drag a downloaded skill here"}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              A SKILL.md, a .zip bundle, or the unzipped skill folder — or click to browse
+            </span>
+          </button>
+
+          {/*
+            The editor is also a drop target, so a file dropped straight onto
+            the text still imports instead of the browser opening it.
           */}
           <div
             {...dropHandlers}
