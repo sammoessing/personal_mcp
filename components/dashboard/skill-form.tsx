@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { Upload } from "lucide-react";
+import { unzipSync, strFromU8 } from "fflate";
+import {
+  parseSkillMarkdown,
+  humanizeSkillName,
+  pickSkillFile,
+} from "@/lib/skills/parse";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export const VISIBILITY_OPTIONS = [
   { value: "private", label: "Private — only you and maintainers" },
@@ -49,6 +57,54 @@ export function SkillForm({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [content, setContent] = useState(initial?.content ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [dragging, setDragging] = useState(false);
+  const [imported, setImported] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Accepts either a bare SKILL.md or a zipped skill bundle. Frontmatter fills
+   * Title and Description, so a downloaded skill lands ready to save instead of
+   * needing its fields retyped.
+   */
+  async function importSkillFile(file: File) {
+    setError(null);
+    setImported(null);
+    try {
+      let markdown: string;
+
+      if (file.name.toLowerCase().endsWith(".zip")) {
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        const entries = unzipSync(buffer);
+        const target = pickSkillFile(Object.keys(entries));
+        if (!target) {
+          setError("That archive doesn't contain a SKILL.md.");
+          return;
+        }
+        markdown = strFromU8(entries[target]);
+      } else {
+        markdown = await file.text();
+      }
+
+      const parsed = parseSkillMarkdown(markdown);
+      setContent(parsed.body);
+      // Only fill empty fields, so an import can't silently overwrite something
+      // already typed.
+      if (parsed.name && !name) setName(humanizeSkillName(parsed.name));
+      if (parsed.description && !description) setDescription(parsed.description);
+      setImported(file.name);
+    } catch {
+      setError("Could not read that file. Drop a SKILL.md or a .zip skill bundle.");
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void importSkillFile(file);
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -74,7 +130,8 @@ export function SkillForm({
                 id="name"
                 name="name"
                 required
-                defaultValue={initial?.name}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Customer Refund Playbook"
               />
             </div>
@@ -92,7 +149,8 @@ export function SkillForm({
               id="description"
               name="description"
               rows={3}
-              defaultValue={initial?.description}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="One or two sentences on when an agent should reach for this skill."
             />
             <p className="text-xs text-muted-foreground">
@@ -133,21 +191,79 @@ export function SkillForm({
 
       <Card>
         <CardContent className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <Label htmlFor="content">SKILL.md — agent instructions</Label>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {content.length.toLocaleString()} chars
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                <Upload className="size-3" />
+                Import file
+              </button>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {content.length.toLocaleString()} chars
+              </span>
+            </div>
           </div>
-          <Textarea
-            id="content"
-            name="content"
-            rows={18}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="font-mono text-xs leading-relaxed"
-            placeholder={SKILL_MD_PLACEHOLDER}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".md,.markdown,.txt,.zip"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void importSkillFile(file);
+              // Reset so re-picking the same file fires change again.
+              e.target.value = "";
+            }}
           />
+
+          {/*
+            The drop target wraps the editor rather than replacing it, so a file
+            can be dropped at any point without clearing what is already typed
+            or hiding the text you are working on.
+          */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={cn(
+              "relative rounded-md transition-colors",
+              dragging && "ring-2 ring-ring ring-offset-2"
+            )}
+          >
+            <Textarea
+              id="content"
+              name="content"
+              rows={18}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="font-mono text-xs leading-relaxed"
+              placeholder={SKILL_MD_PLACEHOLDER}
+            />
+            {dragging && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-background/85">
+                <p className="text-sm font-medium">Drop SKILL.md or a .zip bundle</p>
+              </div>
+            )}
+          </div>
+
+          {imported ? (
+            <p className="text-xs text-success">
+              Loaded from {imported}. Title and description were filled from its frontmatter where
+              they were empty.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Drag in a downloaded SKILL.md or .zip skill bundle to fill this in.
+            </p>
+          )}
         </CardContent>
       </Card>
 
