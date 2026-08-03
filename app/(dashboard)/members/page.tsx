@@ -2,10 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace, isAdmin } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { InviteForm } from "@/components/dashboard/invite-form";
-import { updateWorkspaceBrandingAction } from "@/lib/actions/workspaces";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { BrandingForm } from "@/components/dashboard/branding-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { timeAgo } from "@/lib/format";
@@ -50,56 +47,11 @@ export default async function MembersPage() {
             <CardTitle>Workspace branding</CardTitle>
           </CardHeader>
           <CardContent>
-            <form action={updateWorkspaceBrandingAction} className="flex flex-col gap-4">
-              <div className="flex items-start gap-4">
-                {ws.logoUrl ? (
-                  // Arbitrary external host, so plain <img> rather than next/image.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={ws.logoUrl}
-                    alt=""
-                    className="size-12 shrink-0 rounded-md border object-cover"
-                  />
-                ) : (
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-md border bg-secondary text-sm font-medium text-muted-foreground">
-                    {ws.name.charAt(0)}
-                  </div>
-                )}
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="name">Display name</Label>
-                  <Input id="name" name="name" defaultValue={ws.name} required />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="logo_url">Logo URL</Label>
-                <Input
-                  id="logo_url"
-                  name="logo_url"
-                  type="url"
-                  defaultValue={ws.logoUrl ?? ""}
-                  placeholder="https://example.com/logo.png"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Must be https. Shown on the authorization screen, and sent to MCP clients as this
-                  connector&apos;s icon.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="description">Description</Label>
-                <Input
-                  id="description"
-                  name="description"
-                  defaultValue={ws.description ?? ""}
-                  placeholder="What this workspace is for"
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit">Save branding</Button>
-              </div>
-            </form>
+            <BrandingForm
+              name={ws.name}
+              logoUrl={ws.logoUrl}
+              description={ws.description}
+            />
           </CardContent>
         </Card>
       )}
