@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Plus, Folder, FileText, Compass } from "lucide-react";
+import { Folder, FileText, Compass } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { Button } from "@/components/ui/button";
+import { NewDocDialog } from "@/components/dashboard/new-doc-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -83,14 +83,7 @@ export default async function BrainPage({
       <PageHeader
         title="Brain"
         description="Context and knowledge your agents read from. Approved context docs load as standing instructions."
-        action={
-          <Button asChild size="sm">
-            <Link href="/brain/new">
-              <Plus className="size-4" />
-              New doc
-            </Link>
-          </Button>
-        }
+        action={<NewDocDialog folders={(folders ?? []).map((f) => f.path)} />}
       />
 
       <div className="flex gap-6">
