@@ -12,12 +12,24 @@ type WorkspaceIdentity = {
 };
 
 async function resolveWorkspaceBySlug(slug: string): Promise<WorkspaceIdentity | null> {
-  const { data } = await createServiceRoleClient()
+  const supabase = createServiceRoleClient();
+
+  // Branding columns arrived in migration 0006. Falling back keeps the MCP
+  // endpoint serving (just unbranded) on an unmigrated database, rather than
+  // failing the slug check and rejecting every authenticated request.
+  const { data, error } = await supabase
     .from("workspaces")
     .select("id, slug, name, logo_url, description")
     .eq("slug", slug)
     .maybeSingle();
-  return data;
+  if (!error) return data;
+
+  const { data: basic } = await supabase
+    .from("workspaces")
+    .select("id, slug, name")
+    .eq("slug", slug)
+    .maybeSingle();
+  return basic ? { ...basic, logo_url: null, description: null } : null;
 }
 
 /**

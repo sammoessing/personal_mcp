@@ -26,27 +26,41 @@ export async function listMyWorkspaces(): Promise<Workspace[]> {
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data } = await supabase
+  // Branding columns arrived in migration 0006. If the database hasn't been
+  // migrated yet, fall back to the core columns rather than failing every page
+  // that needs to know which workspaces you belong to.
+  type MemberRow = { role: string; workspaces: unknown };
+
+  const withBranding = await supabase
     .from("workspace_members")
     .select("role, workspaces(id, name, slug, logo_url, description)")
     .eq("user_id", user.id);
 
-  return (data ?? [])
+  const rows: MemberRow[] = withBranding.error
+    ? (
+        await supabase
+          .from("workspace_members")
+          .select("role, workspaces(id, name, slug)")
+          .eq("user_id", user.id)
+      ).data ?? []
+    : (withBranding.data as MemberRow[] | null) ?? [];
+
+  return rows
     .map((row) => {
       const ws = row.workspaces as unknown as {
         id: string;
         name: string;
         slug: string;
-        logo_url: string | null;
-        description: string | null;
+        logo_url?: string | null;
+        description?: string | null;
       } | null;
       if (!ws) return null;
       return {
         id: ws.id,
         name: ws.name,
         slug: ws.slug,
-        logoUrl: ws.logo_url,
-        description: ws.description,
+        logoUrl: ws.logo_url ?? null,
+        description: ws.description ?? null,
         role: row.role as WorkspaceRole,
       };
     })
