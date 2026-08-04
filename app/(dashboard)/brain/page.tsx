@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Folder, FileText, Compass } from "lucide-react";
+import { Folder, FileText, Compass, List, Network } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/format";
 import { snippetOf, type DocKind, type DocReviewState } from "@/lib/brain/types";
+import { buildGraph } from "@/lib/brain/graph";
+import { BrainGraph } from "@/components/dashboard/brain-graph";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +35,10 @@ type DocRow = {
 export default async function BrainPage({
   searchParams,
 }: {
-  searchParams: Promise<{ folder?: string; kind?: string }>;
+  searchParams: Promise<{ folder?: string; kind?: string; view?: string }>;
 }) {
-  const { folder: activeFolder, kind: activeKind } = await searchParams;
+  const { folder: activeFolder, kind: activeKind, view } = await searchParams;
+  const isGraph = view === "graph";
   const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
@@ -68,15 +71,21 @@ export default async function BrainPage({
   const unfiledCount = allDocs.filter((d) => d.folder_id === null).length;
   const contextCount = allDocs.filter((d) => d.kind === "context").length;
 
-  function filterHref(next: { folder?: string; kind?: string }) {
+  function filterHref(next: { folder?: string; kind?: string; view?: string }) {
     const params = new URLSearchParams();
     const folder = "folder" in next ? next.folder : activeFolder;
     const kind = "kind" in next ? next.kind : activeKind;
+    const nextView = "view" in next ? next.view : view;
     if (folder) params.set("folder", folder);
     if (kind) params.set("kind", kind);
+    if (nextView) params.set("view", nextView);
     const qs = params.toString();
     return qs ? `/brain?${qs}` : "/brain";
   }
+
+  // The graph is built from whatever the filters leave visible, so narrowing to
+  // a folder shows that folder's neighbourhood rather than the whole brain.
+  const graph = isGraph ? buildGraph(visible) : null;
 
   return (
     <>
@@ -142,7 +151,41 @@ export default async function BrainPage({
         </nav>
 
         <div className="min-w-0 flex-1">
-          {visible.length === 0 ? (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="inline-flex rounded-md border p-0.5">
+              <ViewTab href={filterHref({ view: undefined })} active={!isGraph} icon={List}>
+                List
+              </ViewTab>
+              <ViewTab href={filterHref({ view: "graph" })} active={isGraph} icon={Network}>
+                Graph
+              </ViewTab>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {visible.length} {visible.length === 1 ? "doc" : "docs"}
+            </p>
+          </div>
+
+          {isGraph && graph ? (
+            <>
+              <p className="mb-3 rounded-md border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
+                Every circle is a document. Solid lines are links you wrote; dashed lines are docs
+                that talk about the same things. Write{" "}
+                <code className="rounded bg-background px-1 py-0.5">[[doc-slug]]</code> (or{" "}
+                <code className="rounded bg-background px-1 py-0.5">[[Doc Title]]</code>) inside a
+                document to link it here. Hover to trace a neighbourhood, drag to rearrange, scroll
+                to zoom, click a node to open the doc.
+              </p>
+              {graph.nodes.length === 0 ? (
+                <Card>
+                  <div className="px-5 py-14 text-center text-sm text-muted-foreground">
+                    No docs match this filter, so there is nothing to plot.
+                  </div>
+                </Card>
+              ) : (
+                <BrainGraph graph={graph} />
+              )}
+            </>
+          ) : visible.length === 0 ? (
             <Card>
               <div className="px-5 py-14 text-center">
                 <p className="text-sm font-medium">
@@ -234,6 +277,33 @@ function FilterLink({
       )}
     >
       <Icon className="size-3.5 shrink-0" />
+      {children}
+    </Link>
+  );
+}
+
+function ViewTab({
+  href,
+  active,
+  icon: Icon,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors",
+        active
+          ? "bg-secondary font-medium text-foreground"
+          : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      <Icon className="size-3.5" />
       {children}
     </Link>
   );
