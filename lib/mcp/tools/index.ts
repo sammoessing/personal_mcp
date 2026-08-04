@@ -7,11 +7,13 @@ import { slackTools } from "@/lib/connectors/slack";
 import { discordTools } from "@/lib/connectors/discord";
 import { skillTools } from "./skills";
 import { brainTools } from "./brain";
+import { fileTools } from "./files";
 import type { ToolDefinition } from "@/lib/mcp/types";
 
 /** Every tool this MCP server can expose: built-ins plus one group per connector. */
 export const ALL_TOOLS: ToolDefinition[] = [
   ...brainTools,
+  ...fileTools,
   ...skillTools,
   ...githubTools,
   ...linearTools,

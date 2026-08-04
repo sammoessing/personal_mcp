@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Folder, Files, Compass, Library, Network, Inbox } from "lucide-react";
+import { Folder, Files, Compass, Library, Network, Inbox, Paperclip } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -12,6 +12,9 @@ import {
   NewFolderButton,
 } from "@/components/dashboard/context-preview";
 import { BrainGraph } from "@/components/dashboard/brain-graph";
+import { FileUpload } from "@/components/dashboard/file-upload";
+import { FileRowActions } from "@/components/dashboard/file-row-actions";
+import { formatBytes, fileKind } from "@/lib/brain/files";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -21,7 +24,7 @@ import { buildGraph } from "@/lib/brain/graph";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "context" | "knowledge" | "graph";
+type Tab = "context" | "knowledge" | "files" | "graph";
 
 /**
  * What a document's review state means operationally, which is what you
@@ -52,6 +55,15 @@ type DocRow = {
   folder_id: string | null;
 };
 
+type FileRow = {
+  id: string;
+  name: string;
+  mime_type: string | null;
+  size_bytes: number;
+  folder_id: string | null;
+  created_at: string;
+};
+
 /** Rough token count — a quarter of the character count is close enough to size a prompt. */
 const estimateTokens = (text: string) => Math.round(text.length / 4);
 
@@ -62,12 +74,15 @@ export default async function BrainPage({
 }) {
   const params = await searchParams;
   const activeFolder = params.folder;
-  const tab: Tab = params.tab === "knowledge" || params.tab === "graph" ? params.tab : "context";
+  const tab: Tab =
+    params.tab === "knowledge" || params.tab === "graph" || params.tab === "files"
+      ? params.tab
+      : "context";
 
   const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
-  const [{ data: docs }, { data: folders }] = await Promise.all([
+  const [{ data: docs }, { data: folders }, { data: fileRows }] = await Promise.all([
     supabase
       .from("brain_docs")
       .select("id, slug, title, kind, scope, content, review_state, updated_at, folder_id")
@@ -75,12 +90,26 @@ export default async function BrainPage({
       .eq("status", "active")
       .order("updated_at", { ascending: false }),
     supabase.from("brain_folders").select("id, path").eq("workspace_id", ws.id).order("path"),
+    supabase
+      .from("brain_files")
+      .select("id, name, mime_type, size_bytes, folder_id, created_at")
+      .eq("workspace_id", ws.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: false }),
   ]);
 
   const allDocs = (docs ?? []) as DocRow[];
+  const allFiles = (fileRows ?? []) as FileRow[];
   const folderById = new Map((folders ?? []).map((f) => [f.id, f.path]));
   const folderPaths = (folders ?? []).map((f) => f.path);
-  const pathOf = (doc: DocRow) => (doc.folder_id ? (folderById.get(doc.folder_id) ?? null) : null);
+  const pathOf = (row: { folder_id: string | null }) =>
+    row.folder_id ? (folderById.get(row.folder_id) ?? null) : null;
+  const inActiveFolder = (row: { folder_id: string | null }) => {
+    if (!activeFolder) return true;
+    if (activeFolder === "unfiled") return row.folder_id === null;
+    const path = pathOf(row);
+    return path === activeFolder || path?.startsWith(`${activeFolder}/`);
+  };
 
   const contextDocs = allDocs.filter((d) => d.kind === "context");
   const knowledgeDocs = allDocs.filter((d) => d.kind === "knowledge");
@@ -101,18 +130,17 @@ export default async function BrainPage({
     .join("\n\n");
   const contextTokens = estimateTokens(standingContext);
 
-  // The graph spans the whole brain; the two list tabs are filtered by kind.
-  const scoped = tab === "graph" ? allDocs : tab === "context" ? contextDocs : knowledgeDocs;
-  const visible = scoped.filter((doc) => {
-    if (!activeFolder) return true;
-    if (activeFolder === "unfiled") return doc.folder_id === null;
-    const path = pathOf(doc);
-    return path === activeFolder || path?.startsWith(`${activeFolder}/`);
-  });
+  // The graph spans the whole brain; the list tabs are filtered by kind.
+  const scoped =
+    tab === "graph" ? allDocs : tab === "context" ? contextDocs : tab === "files" ? [] : knowledgeDocs;
+  const visible = scoped.filter(inActiveFolder);
+  const visibleFiles = allFiles.filter(inActiveFolder);
 
+  // Sidebar counts follow whichever collection the active tab is showing.
+  const sidebarItems: Array<{ folder_id: string | null }> = tab === "files" ? allFiles : scoped;
   const countIn = (path: string) =>
-    scoped.filter((d) => {
-      const p = pathOf(d);
+    sidebarItems.filter((row) => {
+      const p = pathOf(row);
       return p === path || p?.startsWith(`${path}/`);
     }).length;
 
@@ -171,6 +199,9 @@ export default async function BrainPage({
           <TabLink href={href({ tab: "knowledge" })} active={tab === "knowledge"} icon={Library}>
             Knowledge
           </TabLink>
+          <TabLink href={href({ tab: "files" })} active={tab === "files"} icon={Paperclip}>
+            Files
+          </TabLink>
           <TabLink href={href({ tab: "graph" })} active={tab === "graph"} icon={Network}>
             Graph
           </TabLink>
@@ -181,8 +212,8 @@ export default async function BrainPage({
       <div className="flex gap-6">
         <nav className="w-52 shrink-0">
           <SidebarLink href={href({ folder: null })} active={!activeFolder} icon={Files}>
-            All documents
-            <span className="ml-auto text-xs text-muted-foreground">{scoped.length}</span>
+            {tab === "files" ? "All files" : "All documents"}
+            <span className="ml-auto text-xs text-muted-foreground">{sidebarItems.length}</span>
           </SidebarLink>
 
           <div className="mb-2 mt-5 flex items-center justify-between px-2">
@@ -218,14 +249,75 @@ export default async function BrainPage({
             >
               Unfiled
               <span className="ml-auto text-xs text-muted-foreground">
-                {scoped.filter((d) => d.folder_id === null).length}
+                {sidebarItems.filter((row) => row.folder_id === null).length}
               </span>
             </SidebarLink>
           </div>
         </nav>
 
         <div className="min-w-0 flex-1">
-          {tab === "graph" ? (
+          {tab === "files" ? (
+            <div className="flex flex-col gap-4">
+              <FileUpload folder={activeFolder === "unfiled" ? null : (activeFolder ?? null)} />
+
+              {visibleFiles.length === 0 ? (
+                <EmptyState
+                  title="No files here yet"
+                  body="Upload the documents you already have — decks, PDFs, spreadsheets, transcripts. They stay private to this workspace and your agents can fetch them over MCP."
+                />
+              ) : (
+                <Card className="overflow-hidden p-0">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-secondary/40 text-left">
+                        <Th className="pl-5">File</Th>
+                        <Th className="w-20">Type</Th>
+                        <Th className="w-24">Size</Th>
+                        <Th className="w-24">Added</Th>
+                        <Th className="w-28 pr-5" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {visibleFiles.map((file) => (
+                        <tr key={file.id} className="group transition-colors hover:bg-secondary/30">
+                          <td className="min-w-0 py-3 pl-5 pr-4">
+                            <a
+                              href={`/api/brain/files/${file.id}/download`}
+                              className="block truncate font-medium hover:underline"
+                            >
+                              {file.name}
+                            </a>
+                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                              {pathOf(file) ?? "Unfiled"}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <Badge variant="secondary">{fileKind(file.name, file.mime_type)}</Badge>
+                          </td>
+                          <td className="py-3 pr-4 text-xs text-muted-foreground">
+                            {formatBytes(file.size_bytes)}
+                          </td>
+                          <td className="py-3 pr-4 text-xs text-muted-foreground">
+                            {timeAgo(file.created_at)}
+                          </td>
+                          <td className="py-3 pr-5">
+                            <div className="flex justify-end opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                              <FileRowActions
+                                id={file.id}
+                                name={file.name}
+                                folder={pathOf(file)}
+                                folders={folderPaths}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              )}
+            </div>
+          ) : tab === "graph" ? (
             <>
               <p className="mb-3 rounded-md border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
                 Every circle is a document; solid lines are explicit links, faint lines are docs that
