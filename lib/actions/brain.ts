@@ -132,3 +132,55 @@ export async function deleteDocAction(slug: string) {
   revalidatePath("/brain");
   redirect("/brain");
 }
+
+/**
+ * Archiving is the safe default for "I don't want to see this any more":
+ * archived docs stop being served over MCP and drop out of the library, but
+ * nothing is lost. Deleting stays available for when you mean it.
+ */
+export async function archiveDocAction(slug: string) {
+  const ws = await requireCurrentWorkspace();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("brain_docs")
+    .update({ status: "archived", updated_at: new Date().toISOString() })
+    .eq("workspace_id", ws.id)
+    .eq("slug", slug)
+    .select("title")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await appendAuditEvent(ws.id, "brain_doc_archived", { title: data.title, slug });
+  revalidatePath("/brain");
+}
+
+export async function moveDocAction(slug: string, folderPath: string | null) {
+  const ws = await requireCurrentWorkspace();
+  const supabase = await createClient();
+  const folderId = await resolveFolderId(ws.id, folderPath);
+
+  const { data, error } = await supabase
+    .from("brain_docs")
+    .update({ folder_id: folderId, updated_at: new Date().toISOString() })
+    .eq("workspace_id", ws.id)
+    .eq("slug", slug)
+    .select("title")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await appendAuditEvent(ws.id, "brain_doc_moved", {
+    title: data.title,
+    slug,
+    folder: folderPath ?? "unfiled",
+  });
+  revalidatePath("/brain");
+}
+
+export async function createFolderAction(formData: FormData) {
+  const path = String(formData.get("path") ?? "").trim();
+  if (!path) throw new Error("Folder name is required.");
+
+  const ws = await requireCurrentWorkspace();
+  await resolveFolderId(ws.id, path);
+  revalidatePath("/brain");
+}

@@ -312,10 +312,10 @@ export function BrainGraph({ graph }: { graph: BrainGraph }) {
                   x2={pos[b].x}
                   y2={pos[b].y}
                   stroke={lit ? "#7c5cf0" : "currentColor"}
-                  strokeWidth={link.kind === "explicit" ? 1.4 : 0.8}
+                  strokeWidth={lit ? 1.5 : link.kind === "explicit" ? 1 : 0.7}
                   strokeDasharray={link.kind === "related" ? "3 3" : undefined}
                   className="text-muted-foreground"
-                  opacity={faded ? 0.05 : link.kind === "explicit" ? 0.55 : 0.28}
+                  opacity={faded ? 0.04 : lit ? 0.9 : link.kind === "explicit" ? 0.4 : 0.18}
                 />
               );
             })}
@@ -364,7 +364,7 @@ export function BrainGraph({ graph }: { graph: BrainGraph }) {
                     y={radius + 13}
                     textAnchor="middle"
                     className="pointer-events-none fill-foreground text-[10px]"
-                    opacity={hovered === node.id ? 1 : 0.75}
+                    opacity={hovered === node.id ? 1 : 0.62}
                   >
                     {node.title.length > 42 ? `${node.title.slice(0, 40)}…` : node.title}
                   </text>
@@ -375,7 +375,7 @@ export function BrainGraph({ graph }: { graph: BrainGraph }) {
         </svg>
       </GraphFrame>
 
-      <Legend />
+      <Legend scopes={new Set(nodes.map((node) => node.scope))} />
 
       <button
         type="button"
@@ -402,14 +402,14 @@ function GraphFrame({ children }: { children?: React.ReactNode }) {
   );
 }
 
-function Legend() {
+function Legend({ scopes }: { scopes: Set<string> }) {
   const items = [
-    { label: "Company", color: "#7c5cf0", filled: true, ring: false },
-    { label: "Team", color: "#3b82f6", filled: true, ring: false },
-    { label: "Personal", color: "#10b981", filled: true, ring: false },
-    { label: "Awaiting review", color: "#7c5cf0", filled: false, ring: false },
-    { label: "Knowledge (ringed)", color: "#7c5cf0", filled: true, ring: true },
-  ];
+    { label: "Company", color: "#7c5cf0", filled: true, ring: false, when: "company" },
+    { label: "Team", color: "#3b82f6", filled: true, ring: false, when: "team" },
+    { label: "Personal", color: "#10b981", filled: true, ring: false, when: "user" },
+    { label: "Awaiting review", color: "#7c5cf0", filled: false, ring: false, when: null },
+    { label: "Knowledge (ringed)", color: "#7c5cf0", filled: true, ring: true, when: null },
+  ].filter((item) => item.when === null || scopes.has(item.when));
   return (
     <div className="absolute left-3 top-3 rounded-md border bg-background/95 p-3 shadow-xs">
       <ul className="flex flex-col gap-1.5">

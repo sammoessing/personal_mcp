@@ -1,23 +1,43 @@
 import Link from "next/link";
-import { Folder, FileText, Compass, List, Network } from "lucide-react";
+import { Folder, Files, Compass, Library, Network, Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentWorkspace } from "@/lib/workspace/context";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { NewDocDialog } from "@/components/dashboard/new-doc-dialog";
+import { StatCard } from "@/components/dashboard/stat-card";
+import { DocRowActions } from "@/components/dashboard/doc-row-actions";
+import {
+  ContextPreview,
+  RefreshButton,
+  NewFolderButton,
+} from "@/components/dashboard/context-preview";
+import { BrainGraph } from "@/components/dashboard/brain-graph";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/lib/format";
 import { snippetOf, type DocKind, type DocReviewState } from "@/lib/brain/types";
 import { buildGraph } from "@/lib/brain/graph";
-import { BrainGraph } from "@/components/dashboard/brain-graph";
 
 export const dynamic = "force-dynamic";
 
-const REVIEW_VARIANT: Record<DocReviewState, "outline" | "warning" | "success"> = {
-  draft: "outline",
-  pending: "warning",
-  approved: "success",
+type Tab = "context" | "knowledge" | "graph";
+
+/**
+ * What a document's review state means operationally, which is what you
+ * actually want to know at a glance: is this reaching my agents or not?
+ */
+const STATUS: Record<DocReviewState, { label: string; variant: "success" | "warning" | "outline" }> =
+  {
+    approved: { label: "Live", variant: "success" },
+    pending: { label: "In review", variant: "warning" },
+    draft: { label: "Draft", variant: "outline" },
+  };
+
+const SCOPE_LABEL: Record<string, string> = {
+  company: "Company",
+  team: "Team",
+  user: "Personal",
 };
 
 type DocRow = {
@@ -32,13 +52,18 @@ type DocRow = {
   folder_id: string | null;
 };
 
+/** Rough token count — a quarter of the character count is close enough to size a prompt. */
+const estimateTokens = (text: string) => Math.round(text.length / 4);
+
 export default async function BrainPage({
   searchParams,
 }: {
-  searchParams: Promise<{ folder?: string; kind?: string; view?: string }>;
+  searchParams: Promise<{ folder?: string; tab?: string }>;
 }) {
-  const { folder: activeFolder, kind: activeKind, view } = await searchParams;
-  const isGraph = view === "graph";
+  const params = await searchParams;
+  const activeFolder = params.folder;
+  const tab: Tab = params.tab === "knowledge" || params.tab === "graph" ? params.tab : "context";
+
   const ws = await requireCurrentWorkspace();
   const supabase = await createClient();
 
@@ -54,199 +79,227 @@ export default async function BrainPage({
 
   const allDocs = (docs ?? []) as DocRow[];
   const folderById = new Map((folders ?? []).map((f) => [f.id, f.path]));
+  const folderPaths = (folders ?? []).map((f) => f.path);
+  const pathOf = (doc: DocRow) => (doc.folder_id ? (folderById.get(doc.folder_id) ?? null) : null);
 
-  const visible = allDocs.filter((doc) => {
-    if (activeKind && doc.kind !== activeKind) return false;
+  const contextDocs = allDocs.filter((d) => d.kind === "context");
+  const knowledgeDocs = allDocs.filter((d) => d.kind === "knowledge");
+  const pendingCount = allDocs.filter((d) => d.review_state !== "approved").length;
+
+  // Mirrors brain_context_get: only approved context docs reach an agent, and
+  // they arrive with the same provenance headers. Previewing anything else
+  // would be reassuring and wrong.
+  const standingContext = contextDocs
+    .filter((doc) => doc.review_state === "approved")
+    .map((doc) => {
+      const folder = pathOf(doc);
+      const header = `--- source: ${doc.slug} | scope: ${doc.scope}${
+        folder ? ` | folder: ${folder}` : ""
+      } | updated: ${doc.updated_at.slice(0, 10)} ---`;
+      return `${header}\n# ${doc.title}\n\n${doc.content}`;
+    })
+    .join("\n\n");
+  const contextTokens = estimateTokens(standingContext);
+
+  // The graph spans the whole brain; the two list tabs are filtered by kind.
+  const scoped = tab === "graph" ? allDocs : tab === "context" ? contextDocs : knowledgeDocs;
+  const visible = scoped.filter((doc) => {
     if (!activeFolder) return true;
     if (activeFolder === "unfiled") return doc.folder_id === null;
-    const path = doc.folder_id ? folderById.get(doc.folder_id) : null;
+    const path = pathOf(doc);
     return path === activeFolder || path?.startsWith(`${activeFolder}/`);
   });
 
   const countIn = (path: string) =>
-    allDocs.filter((d) => {
-      const p = d.folder_id ? folderById.get(d.folder_id) : null;
+    scoped.filter((d) => {
+      const p = pathOf(d);
       return p === path || p?.startsWith(`${path}/`);
     }).length;
-  const unfiledCount = allDocs.filter((d) => d.folder_id === null).length;
-  const contextCount = allDocs.filter((d) => d.kind === "context").length;
 
-  function filterHref(next: { folder?: string; kind?: string; view?: string }) {
-    const params = new URLSearchParams();
+  function href(next: { folder?: string | null; tab?: Tab }) {
+    const search = new URLSearchParams();
     const folder = "folder" in next ? next.folder : activeFolder;
-    const kind = "kind" in next ? next.kind : activeKind;
-    const nextView = "view" in next ? next.view : view;
-    if (folder) params.set("folder", folder);
-    if (kind) params.set("kind", kind);
-    if (nextView) params.set("view", nextView);
-    const qs = params.toString();
+    const nextTab = next.tab ?? tab;
+    if (folder) search.set("folder", folder);
+    if (nextTab !== "context") search.set("tab", nextTab);
+    const qs = search.toString();
     return qs ? `/brain?${qs}` : "/brain";
   }
-
-  // The graph is built from whatever the filters leave visible, so narrowing to
-  // a folder shows that folder's neighbourhood rather than the whole brain.
-  const graph = isGraph ? buildGraph(visible) : null;
 
   return (
     <>
       <PageHeader
         title="Brain"
-        description="Context and knowledge your agents read from. Approved context docs load as standing instructions."
-        action={<NewDocDialog folders={(folders ?? []).map((f) => f.path)} />}
+        description="Standing context and company knowledge, review-gated and served to your agents over MCP."
+        action={
+          <div className="flex items-center gap-2">
+            <RefreshButton />
+            <NewDocDialog folders={folderPaths} />
+          </div>
+        }
       />
+
+      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Documents" value={allDocs.length} />
+        <StatCard
+          label="Context docs"
+          value={contextDocs.length}
+          subtitle={`~${contextTokens.toLocaleString()} tokens`}
+        />
+        <StatCard
+          label="Knowledge docs"
+          value={knowledgeDocs.length}
+          subtitle="searched on demand"
+        />
+        <StatCard label="Pending review" value={pendingCount} />
+      </div>
+
+      <p className="mb-5 text-sm text-muted-foreground">
+        <span className="font-medium text-foreground">Context</span>{" "}
+        <span className="text-[#7c5cf0]">(personal + company)</span> is loaded into your agents at
+        the start of every session (~{contextTokens.toLocaleString()} tokens right now).{" "}
+        <span className="font-medium text-foreground">Knowledge</span> is your searchable
+        documentation library, pulled on demand —{" "}
+        <span className="text-[#c2410c]">put everything there</span>.
+      </p>
+
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-md border p-0.5">
+          <TabLink href={href({ tab: "context" })} active={tab === "context"} icon={Compass}>
+            Context
+          </TabLink>
+          <TabLink href={href({ tab: "knowledge" })} active={tab === "knowledge"} icon={Library}>
+            Knowledge
+          </TabLink>
+          <TabLink href={href({ tab: "graph" })} active={tab === "graph"} icon={Network}>
+            Graph
+          </TabLink>
+        </div>
+        <ContextPreview context={standingContext} tokens={contextTokens} />
+      </div>
 
       <div className="flex gap-6">
         <nav className="w-52 shrink-0">
-          <p className="mb-2 px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Kind
-          </p>
-          <div className="mb-5 flex flex-col gap-0.5">
-            <FilterLink href={filterHref({ kind: undefined })} active={!activeKind} icon={FileText}>
-              All docs
-              <span className="ml-auto text-xs text-muted-foreground">{allDocs.length}</span>
-            </FilterLink>
-            <FilterLink
-              href={filterHref({ kind: "context" })}
-              active={activeKind === "context"}
-              icon={Compass}
-            >
-              Context
-              <span className="ml-auto text-xs text-muted-foreground">{contextCount}</span>
-            </FilterLink>
+          <SidebarLink href={href({ folder: null })} active={!activeFolder} icon={Files}>
+            All documents
+            <span className="ml-auto text-xs text-muted-foreground">{scoped.length}</span>
+          </SidebarLink>
+
+          <div className="mb-2 mt-5 flex items-center justify-between px-2">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Folders
+            </span>
+            <NewFolderButton />
           </div>
 
-          <p className="mb-2 px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Folders
-          </p>
           <div className="flex flex-col gap-0.5">
-            <FilterLink
-              href={filterHref({ folder: undefined })}
-              active={!activeFolder}
-              icon={Folder}
-            >
-              All
-            </FilterLink>
-            {(folders ?? []).map((f) => (
-              <FilterLink
-                key={f.id}
-                href={filterHref({ folder: f.path })}
-                active={activeFolder === f.path}
+            {folderPaths.map((path) => (
+              <SidebarLink
+                key={path}
+                href={href({ folder: path })}
+                active={activeFolder === path}
                 icon={Folder}
+                indent
               >
-                <span className="truncate">{f.path}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{countIn(f.path)}</span>
-              </FilterLink>
+                <span className="truncate">{path}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{countIn(path)}</span>
+              </SidebarLink>
             ))}
-            {unfiledCount > 0 && (
-              <FilterLink
-                href={filterHref({ folder: "unfiled" })}
-                active={activeFolder === "unfiled"}
-                icon={Folder}
-              >
-                Unfiled
-                <span className="ml-auto text-xs text-muted-foreground">{unfiledCount}</span>
-              </FilterLink>
+            {folderPaths.length === 0 && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">No folders yet.</p>
             )}
+          </div>
+
+          <div className="mt-2">
+            <SidebarLink
+              href={href({ folder: "unfiled" })}
+              active={activeFolder === "unfiled"}
+              icon={Inbox}
+            >
+              Unfiled
+              <span className="ml-auto text-xs text-muted-foreground">
+                {scoped.filter((d) => d.folder_id === null).length}
+              </span>
+            </SidebarLink>
           </div>
         </nav>
 
         <div className="min-w-0 flex-1">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="inline-flex rounded-md border p-0.5">
-              <ViewTab href={filterHref({ view: undefined })} active={!isGraph} icon={List}>
-                List
-              </ViewTab>
-              <ViewTab href={filterHref({ view: "graph" })} active={isGraph} icon={Network}>
-                Graph
-              </ViewTab>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {visible.length} {visible.length === 1 ? "doc" : "docs"}
-            </p>
-          </div>
-
-          {isGraph && graph ? (
+          {tab === "graph" ? (
             <>
               <p className="mb-3 rounded-md border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
-                Every circle is a document. Solid lines are links you wrote; dashed lines are docs
-                that talk about the same things. Write{" "}
+                Every circle is a document; solid lines are explicit links, faint lines are docs that
+                talk about the same things. Write{" "}
                 <code className="rounded bg-background px-1 py-0.5">[[doc-slug]]</code> (or{" "}
                 <code className="rounded bg-background px-1 py-0.5">[[Doc Title]]</code>) inside a
-                document to link it here. Hover to trace a neighbourhood, drag to rearrange, scroll
-                to zoom, click a node to open the doc.
+                document to link it here, Obsidian-style. Hover to trace a neighborhood, drag to
+                rearrange, scroll to zoom, click a node to open the doc.
               </p>
-              {graph.nodes.length === 0 ? (
-                <Card>
-                  <div className="px-5 py-14 text-center text-sm text-muted-foreground">
-                    No docs match this filter, so there is nothing to plot.
-                  </div>
-                </Card>
+              {visible.length === 0 ? (
+                <EmptyState title="Nothing to plot" body="No documents match this filter." />
               ) : (
-                <BrainGraph graph={graph} />
+                <BrainGraph graph={buildGraph(visible)} />
               )}
             </>
           ) : visible.length === 0 ? (
-            <Card>
-              <div className="px-5 py-14 text-center">
-                <p className="text-sm font-medium">
-                  {allDocs.length === 0 ? "Your brain is empty" : "No docs match this filter"}
-                </p>
-                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                  {allDocs.length === 0
-                    ? "Add a doc to give your agents durable context. Mark it as “context” and approve it to load it into every session."
-                    : "Try a different folder or kind."}
-                </p>
-              </div>
-            </Card>
+            <EmptyState
+              title={tab === "context" ? "No context docs yet" : "No knowledge docs yet"}
+              body={
+                tab === "context"
+                  ? "Context docs load into every agent session as standing instructions. Keep them short — anything long belongs in Knowledge."
+                  : "Knowledge is your searchable library. Agents pull from it on demand, so this is where most documents should live."
+              }
+            />
           ) : (
-            <Card className="p-0">
-              <div className="divide-y">
-                {visible.map((doc) => {
-                  const path = doc.folder_id ? folderById.get(doc.folder_id) : null;
-                  return (
-                    <Link
-                      key={doc.id}
-                      href={`/brain/${doc.slug}`}
-                      className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-secondary/40"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-medium">{doc.title}</p>
-                          {doc.kind === "context" && (
-                            <Badge variant="secondary" className="gap-1">
-                              <Compass className="size-3" />
-                              context
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {snippetOf(doc.content) || "Empty doc"}
-                        </p>
-                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span className="capitalize">{doc.scope}</span>
-                          {path && (
-                            <>
-                              <span>·</span>
-                              <span>{path}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <Badge
-                          variant={REVIEW_VARIANT[doc.review_state]}
-                          className="w-20 justify-center capitalize"
-                        >
-                          {doc.review_state}
+            <Card className="overflow-hidden p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-secondary/40 text-left">
+                    <Th className="pl-5">Document</Th>
+                    <Th className="w-28">Scope</Th>
+                    <Th className="w-28">Status</Th>
+                    <Th className="w-24">Updated</Th>
+                    <Th className="w-32 pr-5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {visible.map((doc) => (
+                    <tr key={doc.id} className="group transition-colors hover:bg-secondary/30">
+                      <td className="min-w-0 py-3 pl-5 pr-4">
+                        <Link href={`/brain/${doc.slug}`} className="block">
+                          <span className="block truncate font-medium">{doc.title}</span>
+                          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                            {snippetOf(doc.content, 90) || "Empty doc"}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge variant="secondary">{SCOPE_LABEL[doc.scope] ?? doc.scope}</Badge>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge variant={STATUS[doc.review_state].variant}>
+                          {STATUS[doc.review_state].label}
                         </Badge>
-                        <span className="w-10 text-right text-xs text-muted-foreground">
-                          {timeAgo(doc.updated_at)}
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+                      </td>
+                      <td className="py-3 pr-4 text-xs text-muted-foreground">
+                        {timeAgo(doc.updated_at)}
+                      </td>
+                      <td className="py-3 pr-5">
+                        {/* Revealed on hover so a long list stays calm, but kept
+                            focusable so the row is still keyboard-reachable. */}
+                        <div className="flex justify-end opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                          <DocRowActions
+                            slug={doc.slug}
+                            title={doc.title}
+                            folder={pathOf(doc)}
+                            folders={folderPaths}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </Card>
           )}
         </div>
@@ -255,34 +308,31 @@ export default async function BrainPage({
   );
 }
 
-function FilterLink({
-  href,
-  active,
-  icon: Icon,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
+function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <Link
-      href={href}
+    <th
       className={cn(
-        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-        active
-          ? "bg-secondary font-medium text-foreground"
-          : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+        "py-2.5 pr-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+        className
       )}
     >
-      <Icon className="size-3.5 shrink-0" />
       {children}
-    </Link>
+    </th>
   );
 }
 
-function ViewTab({
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <Card>
+      <div className="px-5 py-16 text-center">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{body}</p>
+      </div>
+    </Card>
+  );
+}
+
+function TabLink({
   href,
   active,
   icon: Icon,
@@ -297,13 +347,43 @@ function ViewTab({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors",
+        "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs transition-colors",
         active
           ? "bg-secondary font-medium text-foreground"
           : "text-muted-foreground hover:text-foreground"
       )}
     >
       <Icon className="size-3.5" />
+      {children}
+    </Link>
+  );
+}
+
+function SidebarLink({
+  href,
+  active,
+  icon: Icon,
+  indent,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  indent?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2 rounded-md py-1.5 text-sm transition-colors",
+        indent ? "pl-5 pr-2.5" : "px-2.5",
+        active
+          ? "bg-secondary font-medium text-foreground"
+          : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
       {children}
     </Link>
   );

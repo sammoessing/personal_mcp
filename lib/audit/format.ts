@@ -20,6 +20,10 @@ export function eventLabel(eventType: string, payload: Record<string, unknown>):
       return `Brain doc "${payload.title}" ${payload.reviewState}`;
     case "brain_doc_deleted":
       return `Brain doc "${payload.title}" deleted`;
+    case "brain_doc_archived":
+      return `Brain doc "${payload.title}" archived`;
+    case "brain_doc_moved":
+      return `Brain doc "${payload.title}" moved to ${payload.folder}`;
     case "brain_folder_created":
       return `Brain folder "${payload.path}" created`;
     case "mcp_client_authorized":
