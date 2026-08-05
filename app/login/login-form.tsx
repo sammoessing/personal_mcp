@@ -49,10 +49,7 @@ export function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <span className="text-sm font-semibold">M</span>
-          </div>
-          <h1 className="text-lg font-semibold">Manifest</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Charted</h1>
           <p className="text-sm text-muted-foreground">
             Sign in to your personal MCP dashboard
           </p>

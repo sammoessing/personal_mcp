@@ -61,8 +61,8 @@ function handlerFor(workspace: WorkspaceIdentity | null) {
       // carries title, description and icons. Cast so the richer identity
       // actually reaches the client.
       serverInfo: {
-        name: workspace ? workspace.slug : "manifest",
-        title: workspace ? `${workspace.name} · Manifest` : "Manifest",
+        name: workspace ? workspace.slug : "charted",
+        title: workspace ? `${workspace.name} · Charted` : "Charted",
         version: "0.1.0",
         ...(workspace?.description ? { description: workspace.description } : {}),
         ...(workspace?.logo_url ? { icons: [{ src: workspace.logo_url }] } : {}),
@@ -104,7 +104,7 @@ async function verifyToken(req: Request, bearerToken?: string) {
     if (requestedSlug && requestedSlug !== pinned.slug) return undefined;
     return {
       token: bearerToken,
-      clientId: "manifest-static-token",
+      clientId: "charted-static-token",
       scopes: [MCP_SCOPE],
       // No member identity: the static token belongs to the deployment, not a
       // person, so member-scoped connectors are deliberately unreachable.

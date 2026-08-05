@@ -1,4 +1,4 @@
-# Manifest — multi-workspace MCP dashboard
+# Charted — multi-workspace MCP dashboard
 
 A dashboard that exposes a real MCP server (`/api/mcp`) over Streamable HTTP, lets each workspace
 connect its own tools (GitHub, Linear, Google Calendar, Gmail, Notion, Slack, Discord) via live

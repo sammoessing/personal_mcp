@@ -23,7 +23,7 @@ export function McpClientConfig({ url, token }: { url: string; token: string }) 
 
   const configObject = {
     mcpServers: {
-      manifest: {
+      charted: {
         url,
         headers: {
           Authorization: `Bearer ${hasToken ? token : "<MCP_ACCESS_TOKEN>"}`,

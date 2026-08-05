@@ -109,7 +109,7 @@ export default async function AuthorizePage() {
           )}
           <h1 className="text-lg font-semibold">Authorize {client.client_name}</h1>
           <p className="text-sm text-muted-foreground">
-            This will let it call your Manifest MCP server as{" "}
+            This will let it call your Charted MCP server as{" "}
             <span className="font-medium text-foreground">{user.email}</span>.
           </p>
         </div>

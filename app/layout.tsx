@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Manifest",
+  title: "Charted",
   description: "Personal MCP dashboard — skills, connectors, and audit trail.",
 };
 

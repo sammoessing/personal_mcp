@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       authorization_servers: [origin],
       scopes_supported: [MCP_SCOPE],
       bearer_methods_supported: ["header"],
-      resource_name: "Manifest personal MCP",
+      resource_name: "Charted personal MCP",
     },
     { headers: CORS_JSON_HEADERS }
   );
