@@ -20,6 +20,10 @@ export type AuditEventType =
   | "brain_file_moved"
   | "brain_file_updated"
   | "mcp_client_authorized"
+  | "mcp_server_added"
+  | "mcp_server_removed"
+  | "mcp_server_connected"
+  | "mcp_server_disconnected"
   | "member_invited"
   | "member_joined"
   | "member_removed";

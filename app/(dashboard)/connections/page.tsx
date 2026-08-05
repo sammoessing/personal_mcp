@@ -9,6 +9,9 @@ import {
 } from "@/lib/connectors/registry";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ConnectorCard } from "@/components/dashboard/connector-card";
+import { McpServerCard, AddMcpServerDialog } from "@/components/dashboard/mcp-server-card";
+import { listServers, getConnection } from "@/lib/mcp-client/store";
+import { Card } from "@/components/ui/card";
 import { CheckCircle2, XCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +19,13 @@ export const dynamic = "force-dynamic";
 export default async function ConnectionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; provider?: string; message?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    provider?: string;
+    message?: string;
+    mcp_error?: string;
+    mcp_connected?: string;
+  }>;
 }) {
   const params = await searchParams;
   const ws = await requireCurrentWorkspace();
@@ -55,6 +64,20 @@ export default async function ConnectionsPage({
     };
   }).sort((a, b) => a.displayName.localeCompare(b.displayName));
 
+  // Remote MCP servers. Connection state is resolved per member, so a
+  // colleague's connection never shows as yours.
+  const actor = { workspaceId: ws.id, userId: user?.id ?? null };
+  const servers = await listServers(ws.id);
+  const mcpCards = await Promise.all(
+    servers.map(async (server) => ({
+      id: server.id,
+      name: server.name,
+      url: server.url,
+      scope: server.scope,
+      connected: Boolean(await getConnection(server, actor)),
+    }))
+  );
+
   return (
     <>
       <PageHeader
@@ -82,6 +105,59 @@ export default async function ConnectionsPage({
           </span>
         </div>
       )}
+
+      {(params.mcp_error || params.mcp_connected) && (
+        <div
+          className={`mb-6 flex items-center gap-2 rounded-md border px-4 py-3 text-sm ${
+            params.mcp_error
+              ? "border-destructive/30 bg-destructive/5 text-destructive"
+              : "border-success/30 bg-success/5 text-success"
+          }`}
+        >
+          {params.mcp_error ? (
+            <XCircle className="size-4 shrink-0" />
+          ) : (
+            <CheckCircle2 className="size-4 shrink-0" />
+          )}
+          <span>{params.mcp_error ?? "Connected."}</span>
+        </div>
+      )}
+
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">MCP servers</h2>
+          <p className="text-xs text-muted-foreground">
+            External services your agents reach over MCP. These register themselves, so there is
+            nothing to set up beyond signing in.
+          </p>
+        </div>
+        <AddMcpServerDialog />
+      </div>
+
+      {mcpCards.length === 0 ? (
+        <Card className="mb-8">
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm font-medium">No MCP servers yet</p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+              Add one by URL — <code>https://mcp.linear.app/mcp</code> or your own internal server.
+              Connecting is one click; no OAuth app to register.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {mcpCards.map((server) => (
+            <McpServerCard key={server.id} server={server} workspaceName={ws.name} />
+          ))}
+        </div>
+      )}
+
+      <div className="mb-3">
+        <h2 className="text-sm font-medium">Built-in connectors</h2>
+        <p className="text-xs text-muted-foreground">
+          Direct API integrations. These need an OAuth app registered with the provider.
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {cards.map((connector) => (

@@ -36,6 +36,14 @@ export function eventLabel(eventType: string, payload: Record<string, unknown>):
       return `File "${payload.name}" moved to ${payload.folder}`;
     case "brain_folder_created":
       return `Brain folder "${payload.path}" created`;
+    case "mcp_server_added":
+      return `External MCP server "${payload.name}" added`;
+    case "mcp_server_removed":
+      return `External MCP server "${payload.name}" removed`;
+    case "mcp_server_connected":
+      return `Connected to "${payload.name}"`;
+    case "mcp_server_disconnected":
+      return `Disconnected from "${payload.name}"`;
     case "mcp_client_authorized":
       return `MCP client authorized (${payload.client_id})`;
     default:
