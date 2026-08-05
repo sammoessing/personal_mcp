@@ -97,6 +97,7 @@ export default async function BrainPage({
       .select("id, name, description, mime_type, size_bytes, folder_id, created_at")
       .eq("workspace_id", ws.id)
       .eq("status", "active")
+      .eq("role", "file")
       .order("created_at", { ascending: false }),
   ]);
 

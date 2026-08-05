@@ -35,6 +35,9 @@ export const fileTools: ToolDefinition[] = [
         .select("id, name, description, mime_type, size_bytes, created_at, brain_folders(path)")
         .eq("workspace_id", ctx.workspaceId)
         .eq("status", "active")
+        // Images embedded in documents are reached through the document that
+        // references them, not listed as files in their own right.
+        .eq("role", "file")
         .order("created_at", { ascending: false })
         .limit(200);
 

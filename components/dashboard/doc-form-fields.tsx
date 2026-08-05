@@ -23,6 +23,7 @@ export function DocFormFields({
 }) {
   const [title, setTitle] = useState(doc?.title ?? "");
   const [description, setDescription] = useState(doc?.description ?? "");
+  const [sourceFileId, setSourceFileId] = useState("");
   const [content, setContent] = useState(doc?.content ?? "");
 
   return (
@@ -113,8 +114,10 @@ export function DocFormFields({
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="content">Content (markdown)</Label>
         <DocImport
+          folder={folderPath ?? null}
           onImported={(result) => {
             setContent(result.text);
+            setSourceFileId(result.sourceFileId);
             setTitle((current) => current || result.suggestedTitle);
           }}
         />
@@ -127,8 +130,10 @@ export function DocFormFields({
           onChange={(event) => setContent(event.target.value)}
           placeholder={"# Overview\n\nLink other docs with [[doc-slug]]."}
         />
+        <input type="hidden" name="source_file_id" value={sourceFileId} />
         <p className="text-xs text-muted-foreground">
-          Importing replaces everything below with the file&apos;s text.
+          Importing replaces everything below with the file&apos;s text. Images are kept, and the
+          original file stays attached.
         </p>
       </div>
     </>

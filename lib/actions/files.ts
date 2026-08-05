@@ -213,8 +213,10 @@ export async function extractStagedUploadAction(input: {
   path: string;
   name: string;
   mimeType: string | null;
+  folder: string | null;
 }) {
   const ws = await requireCurrentWorkspace();
+  const user = await getSessionUser();
   if (!input.path.startsWith(`${ws.id}/imports/`)) {
     throw new Error("That upload does not belong to this workspace.");
   }
@@ -223,17 +225,86 @@ export async function extractStagedUploadAction(input: {
   const { data: blob, error } = await service.storage.from(BRAIN_BUCKET).download(input.path);
   if (error || !blob) throw new Error(error?.message ?? "The upload could not be read.");
 
-  try {
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const extracted = await extractDocumentText(bytes, input.name, input.mimeType);
-    return {
-      text: extracted.text,
-      note: extracted.note ?? null,
-      suggestedTitle: titleFromFilename(input.name),
-    };
-  } finally {
-    // Always clean up, including when extraction throws — a failed import
-    // should not leave an orphaned object behind.
-    await service.storage.from(BRAIN_BUCKET).remove([input.path]);
+  const supabase = await createClient();
+
+  let folderId: string | null = null;
+  if (input.folder) {
+    const { data: folder } = await supabase
+      .from("brain_folders")
+      .select("id")
+      .eq("workspace_id", ws.id)
+      .eq("path", input.folder)
+      .maybeSingle();
+    folderId = folder?.id ?? null;
   }
+
+  /**
+   * Each image lifted out of the document is stored as its own object and
+   * recorded with role 'embedded', so it is addressable by the markdown but
+   * stays out of the Files tab. Inlining as base64 would instead bloat the
+   * document and cost an agent thousands of tokens for a logo.
+   */
+  const saveImage = async (bytes: Uint8Array, contentType: string): Promise<string> => {
+    const ext = contentType.split("/")[1]?.replace(/[^a-z0-9]/gi, "").slice(0, 5) || "png";
+    const imagePath = `${ws.id}/images/${randomUUID()}.${ext.toLowerCase()}`;
+
+    const { error: uploadError } = await service.storage
+      .from(BRAIN_BUCKET)
+      .upload(imagePath, bytes, { contentType, upsert: false });
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data: row, error: rowError } = await supabase
+      .from("brain_files")
+      .insert({
+        workspace_id: ws.id,
+        name: `image.${ext}`,
+        storage_path: imagePath,
+        mime_type: contentType,
+        size_bytes: bytes.byteLength,
+        uploaded_by: user?.id ?? null,
+        role: "embedded",
+      })
+      .select("id")
+      .single();
+    if (rowError) throw new Error(rowError.message);
+
+    return `/api/brain/images/${row.id}`;
+  };
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const extracted = await extractDocumentText(bytes, input.name, input.mimeType, saveImage);
+
+  // The original is kept rather than discarded. Extraction always loses
+  // layout, and for PDFs it loses images entirely, so the file you actually
+  // uploaded stays attached and downloadable.
+  const { data: sourceFile, error: sourceError } = await supabase
+    .from("brain_files")
+    .insert({
+      workspace_id: ws.id,
+      folder_id: folderId,
+      name: input.name,
+      storage_path: input.path,
+      mime_type: input.mimeType,
+      size_bytes: bytes.byteLength,
+      uploaded_by: user?.id ?? null,
+      description: "Original imported into a brain document.",
+      role: "file",
+    })
+    .select("id")
+    .single();
+  if (sourceError) throw new Error(sourceError.message);
+
+  await appendAuditEvent(ws.id, "brain_file_uploaded", {
+    name: input.name,
+    sizeBytes: bytes.byteLength,
+  });
+  revalidatePath("/brain");
+
+  return {
+    text: extracted.text,
+    note: extracted.note ?? null,
+    imageCount: extracted.imageCount ?? 0,
+    sourceFileId: sourceFile.id as string,
+    suggestedTitle: titleFromFilename(input.name),
+  };
 }

@@ -36,6 +36,7 @@ async function resolveFolderId(
 export async function createDocAction(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
+  const sourceFileId = String(formData.get("source_file_id") ?? "").trim() || null;
   const kind = String(formData.get("kind") ?? "knowledge") as DocKind;
   const scope = String(formData.get("scope") ?? "user") as DocScope;
   const folderPath = String(formData.get("folder") ?? "").trim() || null;
@@ -57,6 +58,7 @@ export async function createDocAction(formData: FormData) {
       scope,
       folder_id: folderId,
       content,
+      source_file_id: sourceFileId,
     })
     .select("slug, title")
     .single();
@@ -71,6 +73,9 @@ export async function updateDocAction(slug: string, formData: FormData) {
   const ws = await requireCurrentWorkspace();
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
+  // Empty unless this save came with a fresh import, in which case the newly
+  // retained original replaces whatever was attached before.
+  const sourceFileId = String(formData.get("source_file_id") ?? "").trim() || null;
   const kind = String(formData.get("kind") ?? "knowledge") as DocKind;
   const scope = String(formData.get("scope") ?? "user") as DocScope;
   const folderPath = String(formData.get("folder") ?? "").trim() || null;
@@ -89,6 +94,7 @@ export async function updateDocAction(slug: string, formData: FormData) {
       scope,
       folder_id: folderId,
       content,
+      ...(sourceFileId ? { source_file_id: sourceFileId } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("workspace_id", ws.id)

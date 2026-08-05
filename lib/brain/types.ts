@@ -11,6 +11,8 @@ export type BrainDoc = {
   kind: DocKind;
   scope: DocScope;
   folder_id: string | null;
+  /** The file this document was imported from, kept so nothing is lost to extraction. */
+  source_file_id: string | null;
   content: string;
   status: "active" | "archived";
   review_state: DocReviewState;

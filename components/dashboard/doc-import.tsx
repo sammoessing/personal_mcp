@@ -11,6 +11,9 @@ export type ImportResult = {
   text: string;
   suggestedTitle: string;
   note: string | null;
+  imageCount: number;
+  /** The original upload, kept and attached to the document. */
+  sourceFileId: string;
 };
 
 /**
@@ -21,7 +24,14 @@ export type ImportResult = {
  * the node-only parsers where they can run — the browser cannot read a PDF's
  * text layer without shipping a second copy of the parser to every visitor.
  */
-export function DocImport({ onImported }: { onImported: (result: ImportResult) => void }) {
+export function DocImport({
+  folder,
+  onImported,
+}: {
+  /** Where the retained original is filed. */
+  folder?: string | null;
+  onImported: (result: ImportResult) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -59,14 +69,16 @@ export function DocImport({ onImported }: { onImported: (result: ImportResult) =
         path: target.path,
         name: file.name,
         mimeType: file.type || null,
+        folder: folder ?? null,
       });
 
       onImported(result);
       setStatus({
         kind: result.text ? "note" : "error",
-        message:
-          result.note ??
-          `Imported ${file.name}. Check it reads correctly before saving.`,
+        message: [
+          result.note ?? `Imported ${file.name}.`,
+          "The original file is kept in Files and attached to this document.",
+        ].join(" "),
       });
     } catch (err) {
       setStatus({
@@ -130,7 +142,7 @@ export function DocImport({ onImported }: { onImported: (result: ImportResult) =
             ? "Reading the document…"
             : dragging
               ? "Drop to import"
-              : "Import from a PDF, Word doc, or text file — or click to browse"}
+              : "Import from a PDF, Word doc, or text file — images and the original are kept"}
         </span>
       </button>
 

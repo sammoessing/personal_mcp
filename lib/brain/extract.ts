@@ -1,11 +1,43 @@
 import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
 
+/**
+ * mammoth ships markdown conversion and image alt text at runtime, but its
+ * bundled type definitions cover only the HTML path. These describe the parts
+ * actually used rather than casting to any at each call site.
+ */
+type MammothImage = {
+  read: () => Promise<Buffer>;
+  contentType?: string;
+  altText?: string;
+};
+
+type MammothMarkdown = {
+  convertToMarkdown: (
+    input: { buffer: Buffer },
+    options?: { convertImage?: unknown }
+  ) => Promise<{ value: string; messages: Array<{ type: string }> }>;
+};
+
+const markdownMammoth = mammoth as unknown as MammothMarkdown;
+
 export type ExtractedDocument = {
   text: string;
   /** Shown to the person after an import, when the result deserves a caveat. */
   note?: string;
+  /** How many embedded images were pulled out and kept. */
+  imageCount?: number;
 };
+
+/**
+ * Stores one image lifted out of a document and returns the URL the markdown
+ * should point at. Supplied by the caller because extraction has no business
+ * knowing about storage.
+ */
+export type SaveImage = (
+  bytes: Uint8Array,
+  contentType: string
+) => Promise<string>;
 
 const TEXT_EXTENSIONS = /\.(md|markdown|txt|text|csv|tsv|json|ya?ml|log)$/i;
 
@@ -30,7 +62,8 @@ function tidy(raw: string): string {
 export async function extractDocumentText(
   bytes: Uint8Array,
   filename: string,
-  mimeType: string | null
+  mimeType: string | null,
+  saveImage?: SaveImage
 ): Promise<ExtractedDocument> {
   const lower = filename.toLowerCase();
   const mime = mimeType ?? "";
@@ -50,7 +83,7 @@ export async function extractDocumentText(
     }
     return {
       text: merged,
-      note: `Extracted from ${totalPages} page${totalPages === 1 ? "" : "s"}. Layout, images, and tables are lost — check it reads correctly before saving.`,
+      note: `Extracted text from ${totalPages} page${totalPages === 1 ? "" : "s"}. Images and layout are not carried over from PDFs — the original stays attached to this document, so nothing is lost.`,
     };
   }
 
@@ -59,13 +92,43 @@ export async function extractDocumentText(
     mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     // mammoth wants a Node Buffer, not a bare Uint8Array.
-    const { value, messages } = await mammoth.extractRawText({
-      buffer: Buffer.from(bytes),
-    });
+    const buffer = Buffer.from(bytes);
+
+    // Without an image handler mammoth inlines every picture as a base64 data
+    // URI, which would bloat the document and cost an agent thousands of
+    // tokens for a logo. Each image is stored instead and referenced by URL.
+    let imageCount = 0;
+    const convertImage = saveImage
+      ? mammoth.images.imgElement(async (raw: unknown) => {
+          const image = raw as MammothImage;
+          const imageBuffer = await image.read();
+          const src = await saveImage(
+            new Uint8Array(imageBuffer),
+            image.contentType || "application/octet-stream"
+          );
+          imageCount += 1;
+          return { src, alt: image.altText ?? "" };
+        })
+      : undefined;
+
+    const { value, messages } = await markdownMammoth.convertToMarkdown(
+      { buffer },
+      convertImage ? { convertImage } : {}
+    );
     const warnings = messages.filter((message) => message.type === "warning").length;
+
+    const notes: string[] = [];
+    if (imageCount > 0) {
+      notes.push(`Kept ${imageCount} image${imageCount === 1 ? "" : "s"}.`);
+    }
+    if (warnings > 0) {
+      notes.push(`${warnings} formatting warning${warnings === 1 ? "" : "s"}.`);
+    }
+
     return {
       text: tidy(value),
-      note: warnings > 0 ? `Imported with ${warnings} formatting warning${warnings === 1 ? "" : "s"}.` : undefined,
+      imageCount,
+      note: notes.length > 0 ? notes.join(" ") : undefined,
     };
   }
 

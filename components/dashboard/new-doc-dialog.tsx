@@ -53,6 +53,7 @@ export function NewDocDialog({ folders }: { folders: string[] }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
+  const [sourceFileId, setSourceFileId] = useState("");
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -177,8 +178,10 @@ export function NewDocDialog({ folders }: { folders: string[] }) {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="content">Content (markdown)</Label>
             <DocImport
+              folder={folderChoice === NEW_FOLDER ? null : folderChoice || null}
               onImported={(result) => {
                 setContent(result.text);
+                setSourceFileId(result.sourceFileId);
                 // Only fill an empty title, so an import can't quietly
                 // overwrite one you already typed.
                 setTitle((current) => current || result.suggestedTitle);
@@ -199,6 +202,8 @@ export function NewDocDialog({ folders }: { folders: string[] }) {
             />
             <p className="text-xs text-muted-foreground">{CONTENT_HINT[kind]}</p>
           </div>
+
+          <input type="hidden" name="source_file_id" value={sourceFileId} />
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
