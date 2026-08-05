@@ -6,6 +6,8 @@ export type BrainDoc = {
   id: string;
   slug: string;
   title: string;
+  /** When an agent should reach for this doc — the retrieval trigger, not a summary. */
+  description: string | null;
   kind: DocKind;
   scope: DocScope;
   folder_id: string | null;

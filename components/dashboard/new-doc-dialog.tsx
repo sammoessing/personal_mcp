@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createDocAction } from "@/lib/actions/brain";
 import { KIND_DESCRIPTION, type DocKind } from "@/lib/brain/types";
+import { DocImport } from "./doc-import";
 
 const KIND_OPTIONS: Array<{ value: DocKind; label: string }> = [
   { value: "context", label: "Context — loaded at the start of every session" },
@@ -48,6 +49,10 @@ export function NewDocDialog({ folders }: { folders: string[] }) {
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<DocKind>("context");
   const [folderChoice, setFolderChoice] = useState("");
+  // Controlled so an import can fill them; both stay editable afterwards.
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [content, setContent] = useState("");
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -92,8 +97,25 @@ export function NewDocDialog({ folders }: { folders: string[] }) {
               id="title"
               name="title"
               required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="Support tone and escalation rules"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              name="description"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Use this when quoting a plumbing callout or explaining our pricing tiers."
+            />
+            <p className="text-xs text-muted-foreground">
+              This is what an agent reads to decide whether to open the document, so describe the trigger — when to use it — not what it contains.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -154,10 +176,20 @@ export function NewDocDialog({ folders }: { folders: string[] }) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="content">Content (markdown)</Label>
+            <DocImport
+              onImported={(result) => {
+                setContent(result.text);
+                // Only fill an empty title, so an import can't quietly
+                // overwrite one you already typed.
+                setTitle((current) => current || result.suggestedTitle);
+              }}
+            />
             <Textarea
               id="content"
               name="content"
               rows={10}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
               className="font-mono text-xs leading-relaxed"
               placeholder={
                 kind === "context"

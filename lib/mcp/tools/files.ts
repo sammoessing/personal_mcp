@@ -32,7 +32,7 @@ export const fileTools: ToolDefinition[] = [
     ) => {
       let query = createServiceRoleClient()
         .from("brain_files")
-        .select("id, name, mime_type, size_bytes, created_at, brain_folders(path)")
+        .select("id, name, description, mime_type, size_bytes, created_at, brain_folders(path)")
         .eq("workspace_id", ctx.workspaceId)
         .eq("status", "active")
         .order("created_at", { ascending: false })
@@ -52,9 +52,14 @@ export const fileTools: ToolDefinition[] = [
         rows
           .map((row) => {
             const folder = folderPathOf(row);
-            return `${row.id}\n  ${row.name} — ${formatBytes(row.size_bytes)}${
-              row.mime_type ? ` (${row.mime_type})` : ""
-            }\n  folder: ${folder ?? "unfiled"} | added: ${row.created_at.slice(0, 10)}`;
+            return [
+              row.id,
+              `  ${row.name} — ${formatBytes(row.size_bytes)}${row.mime_type ? ` (${row.mime_type})` : ""}`,
+              row.description ? `  ${row.description}` : null,
+              `  folder: ${folder ?? "unfiled"} | added: ${row.created_at.slice(0, 10)}`,
+            ]
+              .filter(Boolean)
+              .join("\n");
           })
           .join("\n\n")
       );
@@ -72,7 +77,7 @@ export const fileTools: ToolDefinition[] = [
       const service = createServiceRoleClient();
       const { data: file, error } = await service
         .from("brain_files")
-        .select("id, name, mime_type, size_bytes, storage_path, brain_folders(path)")
+        .select("id, name, description, mime_type, size_bytes, storage_path, brain_folders(path)")
         .eq("workspace_id", ctx.workspaceId)
         .eq("id", args.id)
         .eq("status", "active")
@@ -106,6 +111,7 @@ export const fileTools: ToolDefinition[] = [
       return textResult(
         [
           `# ${file.name}`,
+          ...(file.description ? [file.description, ""] : []),
           `type: ${file.mime_type ?? "unknown"}`,
           `size: ${formatBytes(file.size_bytes)}`,
           `folder: ${folderPathOf(file) ?? "unfiled"}`,

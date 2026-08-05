@@ -1,21 +1,30 @@
+"use client";
+
+import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DOC_KINDS, DOC_SCOPES, KIND_DESCRIPTION, type BrainDoc } from "@/lib/brain/types";
+import { DocImport } from "./doc-import";
 
 /**
- * Shared field set for creating and editing a brain doc. Native selects keep
- * this a server component so it can be dropped straight into a form action.
+ * Shared field set for creating and editing a brain doc. A client component
+ * because title and content are controlled — importing a file rewrites them —
+ * but it still submits through the parent's server action.
  */
 export function DocFormFields({
   doc,
   folderPath,
   folderOptions,
 }: {
-  doc?: Pick<BrainDoc, "title" | "kind" | "scope" | "content">;
+  doc?: Pick<BrainDoc, "title" | "description" | "kind" | "scope" | "content">;
   folderPath?: string | null;
   folderOptions: string[];
 }) {
+  const [title, setTitle] = useState(doc?.title ?? "");
+  const [description, setDescription] = useState(doc?.description ?? "");
+  const [content, setContent] = useState(doc?.content ?? "");
+
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -24,9 +33,25 @@ export function DocFormFields({
           id="title"
           name="title"
           required
-          defaultValue={doc?.title}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="How we run client kickoffs"
         />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="description">Description</Label>
+        <Textarea
+          id="description"
+          name="description"
+          rows={2}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Use this when quoting a plumbing callout or explaining our pricing tiers."
+        />
+        <p className="text-xs text-muted-foreground">
+          This is what an agent reads to decide whether to open the document, so describe the trigger — when to use it — not what it contains.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -87,14 +112,24 @@ export function DocFormFields({
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="content">Content (markdown)</Label>
+        <DocImport
+          onImported={(result) => {
+            setContent(result.text);
+            setTitle((current) => current || result.suggestedTitle);
+          }}
+        />
         <Textarea
           id="content"
           name="content"
           rows={16}
           className="font-mono text-xs"
-          defaultValue={doc?.content}
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
           placeholder={"# Overview\n\nLink other docs with [[doc-slug]]."}
         />
+        <p className="text-xs text-muted-foreground">
+          Importing replaces everything below with the file&apos;s text.
+        </p>
       </div>
     </>
   );

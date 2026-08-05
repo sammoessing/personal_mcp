@@ -18,6 +18,7 @@ export type AuditEventType =
   | "brain_file_downloaded"
   | "brain_file_deleted"
   | "brain_file_moved"
+  | "brain_file_updated"
   | "mcp_client_authorized"
   | "member_invited"
   | "member_joined"

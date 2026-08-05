@@ -10,7 +10,7 @@ import { snippetOf } from "@/lib/brain/types";
 function publishedDocs(workspaceId: string) {
   return createServiceRoleClient()
     .from("brain_docs")
-    .select("slug, title, kind, scope, content, updated_at, brain_folders(path)")
+    .select("slug, title, description, kind, scope, content, updated_at, brain_folders(path)")
     .eq("workspace_id", workspaceId)
     .eq("review_state", "approved")
     .eq("mcp_exposed", true)
@@ -87,9 +87,11 @@ export const brainTools: ToolDefinition[] = [
         docs
           .map((doc) => {
             const path = folderPathOf(doc);
+            // The description says when to use the doc, which is what the
+            // agent is deciding here; the body snippet is only a fallback.
             return `[${doc.kind}/${doc.scope}] ${doc.title} (${doc.slug})${
               path ? ` — ${path}` : ""
-            }\n  ${snippetOf(doc.content)}`;
+            }\n  ${doc.description || snippetOf(doc.content)}`;
           })
           .join("\n")
       );

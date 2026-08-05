@@ -30,6 +30,8 @@ export function eventLabel(eventType: string, payload: Record<string, unknown>):
       return `File "${payload.name}" downloaded`;
     case "brain_file_deleted":
       return `File "${payload.name}" deleted`;
+    case "brain_file_updated":
+      return `File "${payload.name}" details updated`;
     case "brain_file_moved":
       return `File "${payload.name}" moved to ${payload.folder}`;
     case "brain_folder_created":

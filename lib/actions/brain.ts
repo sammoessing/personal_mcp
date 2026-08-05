@@ -35,6 +35,7 @@ async function resolveFolderId(
 
 export async function createDocAction(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
   const kind = String(formData.get("kind") ?? "knowledge") as DocKind;
   const scope = String(formData.get("scope") ?? "user") as DocScope;
   const folderPath = String(formData.get("folder") ?? "").trim() || null;
@@ -47,7 +48,16 @@ export async function createDocAction(formData: FormData) {
 
   const { data, error } = await supabase
     .from("brain_docs")
-    .insert({ workspace_id: ws.id, title, slug: slugify(title), kind, scope, folder_id: folderId, content })
+    .insert({
+      workspace_id: ws.id,
+      title,
+      description,
+      slug: slugify(title),
+      kind,
+      scope,
+      folder_id: folderId,
+      content,
+    })
     .select("slug, title")
     .single();
   if (error) throw new Error(error.message);
@@ -60,6 +70,7 @@ export async function createDocAction(formData: FormData) {
 export async function updateDocAction(slug: string, formData: FormData) {
   const ws = await requireCurrentWorkspace();
   const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
   const kind = String(formData.get("kind") ?? "knowledge") as DocKind;
   const scope = String(formData.get("scope") ?? "user") as DocScope;
   const folderPath = String(formData.get("folder") ?? "").trim() || null;
@@ -71,7 +82,15 @@ export async function updateDocAction(slug: string, formData: FormData) {
 
   const { error } = await supabase
     .from("brain_docs")
-    .update({ title, kind, scope, folder_id: folderId, content, updated_at: new Date().toISOString() })
+    .update({
+      title,
+      description,
+      kind,
+      scope,
+      folder_id: folderId,
+      content,
+      updated_at: new Date().toISOString(),
+    })
     .eq("workspace_id", ws.id)
     .eq("slug", slug);
   if (error) throw new Error(error.message);

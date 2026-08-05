@@ -47,6 +47,7 @@ type DocRow = {
   id: string;
   slug: string;
   title: string;
+  description: string | null;
   kind: DocKind;
   scope: string;
   content: string;
@@ -58,6 +59,7 @@ type DocRow = {
 type FileRow = {
   id: string;
   name: string;
+  description: string | null;
   mime_type: string | null;
   size_bytes: number;
   folder_id: string | null;
@@ -85,14 +87,14 @@ export default async function BrainPage({
   const [{ data: docs }, { data: folders }, { data: fileRows }] = await Promise.all([
     supabase
       .from("brain_docs")
-      .select("id, slug, title, kind, scope, content, review_state, updated_at, folder_id")
+      .select("id, slug, title, description, kind, scope, content, review_state, updated_at, folder_id")
       .eq("workspace_id", ws.id)
       .eq("status", "active")
       .order("updated_at", { ascending: false }),
     supabase.from("brain_folders").select("id, path").eq("workspace_id", ws.id).order("path"),
     supabase
       .from("brain_files")
-      .select("id, name, mime_type, size_bytes, folder_id, created_at")
+      .select("id, name, description, mime_type, size_bytes, folder_id, created_at")
       .eq("workspace_id", ws.id)
       .eq("status", "active")
       .order("created_at", { ascending: false }),
@@ -288,7 +290,7 @@ export default async function BrainPage({
                               {file.name}
                             </a>
                             <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                              {pathOf(file) ?? "Unfiled"}
+                              {file.description || pathOf(file) || "Unfiled"}
                             </span>
                           </td>
                           <td className="py-3 pr-4">
@@ -305,6 +307,7 @@ export default async function BrainPage({
                               <FileRowActions
                                 id={file.id}
                                 name={file.name}
+                                description={file.description}
                                 folder={pathOf(file)}
                                 folders={folderPaths}
                               />
@@ -361,7 +364,7 @@ export default async function BrainPage({
                         <Link href={`/brain/${doc.slug}`} className="block">
                           <span className="block truncate font-medium">{doc.title}</span>
                           <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                            {snippetOf(doc.content, 90) || "Empty doc"}
+                            {doc.description || snippetOf(doc.content, 90) || "Empty doc"}
                           </span>
                         </Link>
                       </td>
