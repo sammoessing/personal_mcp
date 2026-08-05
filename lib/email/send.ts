@@ -1,17 +1,86 @@
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 export type EmailResult =
-  | { sent: true }
+  | { sent: true; via: "gmail" | "resend" }
   | { sent: false; reason: string };
 
 /**
- * Email is optional: without RESEND_API_KEY the app still issues invites, and
- * the Members page falls back to showing a link you send yourself. Nothing here
- * ever throws — a failed send must not lose an invite that was already created.
+ * Two ways to send, in this order:
+ *
+ * 1. Gmail over SMTP, using an app password. Invites then genuinely come from
+ *    a personal address, which is what people expect from a small team and
+ *    what avoids Resend's requirement to own and verify a sending domain.
+ * 2. Resend, for a proper domain once there is one.
+ *
+ * Both are optional. Without either, invites are still created and the Members
+ * page shows a link to pass along by hand. Nothing here ever throws — a failed
+ * send must not lose an invite that was already issued.
  */
-function client(): Resend | null {
+type Message = { to: string; subject: string; html: string; text: string };
+
+/**
+ * Gmail requires the envelope sender to be the authenticated account, so the
+ * From header is taken from GMAIL_USER rather than EMAIL_FROM. Setting it to
+ * anything else makes Gmail either rewrite it or reject the message.
+ */
+async function sendViaGmail(message: Message): Promise<EmailResult | null> {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return null;
+
+  try {
+    const transport = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user, pass },
+    });
+
+    await transport.sendMail({
+      from: `${process.env.EMAIL_FROM_NAME ?? "Charted"} <${user}>`,
+      // Replies go to a human rather than into an unwatched mailbox.
+      replyTo: user,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    });
+    return { sent: true, via: "gmail" };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Unknown SMTP error.";
+    return {
+      sent: false,
+      // The overwhelmingly common cause is a normal account password used
+      // where an app password is required, so name it.
+      reason: /invalid login|username and password not accepted|badcredentials/i.test(reason)
+        ? "Gmail rejected the login. GMAIL_APP_PASSWORD must be a 16-character app password (Google Account → Security → App passwords), not your normal password, and 2-Step Verification must be on."
+        : reason,
+    };
+  }
+}
+
+async function sendViaResend(message: Message): Promise<EmailResult | null> {
   const key = process.env.RESEND_API_KEY;
-  return key ? new Resend(key) : null;
+  const from = process.env.EMAIL_FROM;
+  if (!key || !from) return null;
+
+  try {
+    const { error } = await new Resend(key).emails.send({
+      from,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    });
+    if (error) return { sent: false, reason: error.message };
+    return { sent: true, via: "resend" };
+  } catch (err) {
+    return {
+      sent: false,
+      reason: err instanceof Error ? err.message : "Unknown error sending the email.",
+    };
+  }
 }
 
 function escapeHtml(value: string): string {
@@ -35,16 +104,6 @@ export async function sendInviteEmail({
   workspaceLogoUrl?: string | null;
   invitedByEmail?: string | null;
 }): Promise<EmailResult> {
-  const resend = client();
-  if (!resend) {
-    return { sent: false, reason: "Email isn't configured (RESEND_API_KEY is not set)." };
-  }
-
-  const from = process.env.EMAIL_FROM;
-  if (!from) {
-    return { sent: false, reason: "Email isn't configured (EMAIL_FROM is not set)." };
-  }
-
   const safeWorkspace = escapeHtml(workspaceName);
   const inviter = invitedByEmail ? escapeHtml(invitedByEmail) : null;
 
@@ -86,22 +145,19 @@ export async function sendInviteEmail({
     `This link is valid for 7 days and only works for ${to}.`,
   ].join("\n");
 
-  try {
-    const { error } = await resend.emails.send({
-      from,
-      to,
-      subject: `You've been invited to ${workspaceName}`,
-      html,
-      text,
-    });
-    if (error) {
-      return { sent: false, reason: error.message };
-    }
-    return { sent: true };
-  } catch (err) {
-    return {
+  const message: Message = {
+    to,
+    subject: `You've been invited to ${workspaceName}`,
+    html,
+    text,
+  };
+
+  return (
+    (await sendViaGmail(message)) ??
+    (await sendViaResend(message)) ?? {
       sent: false,
-      reason: err instanceof Error ? err.message : "Unknown error sending the email.",
-    };
-  }
+      reason:
+        "Email isn't configured. Set GMAIL_USER and GMAIL_APP_PASSWORD to send from your own address, or RESEND_API_KEY and EMAIL_FROM to send from a domain.",
+    }
+  );
 }
