@@ -1,8 +1,21 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronsUpDown, Building2 } from "lucide-react";
+import { Check, ChevronsUpDown, Building2, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { createWorkspaceAction } from "@/lib/actions/workspaces";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +36,22 @@ export function WorkspaceSwitcher({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleCreate(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await createWorkspaceAction(formData);
+        setCreating(false);
+        router.refresh();
+      } catch (err) {
+        if (err && typeof err === "object" && "digest" in err) throw err;
+        setError(err instanceof Error ? err.message : "Could not create the workspace.");
+      }
+    });
+  }
 
   function handleSelect(id: string) {
     if (id === current.id) return;
@@ -69,7 +98,59 @@ export function WorkspaceSwitcher({
             {workspace.id === current.id && <Check className="size-3.5 shrink-0" />}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setCreating(true)} className="gap-2">
+          <Plus className="size-3.5 shrink-0" />
+          New workspace
+        </DropdownMenuItem>
       </DropdownMenuContent>
+
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="sm:max-w-md">
+          <form action={handleCreate}>
+            <DialogHeader>
+              <DialogTitle>New workspace</DialogTitle>
+              <DialogDescription>
+                A separate tenant with its own brain, skills, connections, and audit trail. Nothing
+                is shared with your other workspaces.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="my-4 flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="workspace-name">Name</Label>
+                <Input
+                  id="workspace-name"
+                  name="name"
+                  required
+                  autoComplete="off"
+                  placeholder="Lowbook / PAC Auto Finance"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="workspace-description">Description</Label>
+                <Textarea
+                  id="workspace-description"
+                  name="description"
+                  rows={2}
+                  placeholder="What this workspace is for — shown to agents connecting to it."
+                />
+              </div>
+            </div>
+
+            {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreating(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? "Creating…" : "Create workspace"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DropdownMenu>
   );
 }

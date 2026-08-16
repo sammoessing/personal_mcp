@@ -24,6 +24,7 @@ export type AuditEventType =
   | "mcp_server_removed"
   | "mcp_server_connected"
   | "mcp_server_disconnected"
+  | "workspace_created"
   | "member_invited"
   | "member_joined"
   | "member_removed";

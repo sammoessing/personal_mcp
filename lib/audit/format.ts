@@ -36,6 +36,8 @@ export function eventLabel(eventType: string, payload: Record<string, unknown>):
       return `File "${payload.name}" moved to ${payload.folder}`;
     case "brain_folder_created":
       return `Brain folder "${payload.path}" created`;
+    case "workspace_created":
+      return `Workspace "${payload.name}" created`;
     case "mcp_server_added":
       return `External MCP server "${payload.name}" added`;
     case "mcp_server_removed":

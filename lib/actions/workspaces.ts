@@ -10,11 +10,86 @@ import {
   WORKSPACE_COOKIE,
   listMyWorkspaces,
   requireCurrentWorkspace,
+  getSessionUser,
   isAdmin,
   type WorkspaceRole,
 } from "@/lib/workspace/context";
+import { CONNECTOR_LIST } from "@/lib/connectors/registry";
+import { slugify } from "@/lib/slug";
 
 /** Switching only succeeds for a workspace the user is actually a member of. */
+/**
+ * Creates a workspace and makes the caller its owner.
+ *
+ * Only the workspace-scoped connectors get placeholder rows. Gmail, Calendar
+ * and Discord are per-member, and a shared placeholder for those could never
+ * be claimed under the partial unique indexes from 0008 — their rows are
+ * created when a specific person connects one.
+ */
+export async function createWorkspaceAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+  if (!name) throw new Error("Give the workspace a name.");
+
+  const user = await getSessionUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  const service = createServiceRoleClient();
+  const baseSlug = slugify(name) || "workspace";
+
+  // Slugs appear in the MCP endpoint URL, so a collision has to be resolved
+  // rather than rejected — the person naming it should not have to guess what
+  // another tenant already took.
+  let slug = baseSlug;
+  for (let attempt = 2; attempt <= 50; attempt++) {
+    const { data: taken } = await service
+      .from("workspaces")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!taken) break;
+    slug = `${baseSlug}-${attempt}`;
+  }
+
+  const { data: workspace, error } = await service
+    .from("workspaces")
+    .insert({ name, slug, description })
+    .select("id, slug")
+    .single();
+  if (error) throw new Error(error.message);
+
+  const { error: memberError } = await service
+    .from("workspace_members")
+    .insert({ workspace_id: workspace.id, user_id: user.id, role: "owner" });
+  if (memberError) throw new Error(memberError.message);
+
+  const shared = CONNECTOR_LIST.filter((def) => def.scope === "workspace");
+  if (shared.length > 0) {
+    await service.from("connectors").insert(
+      shared.map((def) => ({
+        workspace_id: workspace.id,
+        provider: def.provider,
+        display_name: def.displayName,
+        scopes: def.scopes,
+      }))
+    );
+  }
+
+  await appendAuditEvent(workspace.id, "workspace_created", { name, slug });
+
+  // Land in the new workspace rather than leaving the person to switch.
+  const cookieStore = await cookies();
+  cookieStore.set(WORKSPACE_COOKIE, workspace.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
+  revalidatePath("/", "layout");
+  return { id: workspace.id, slug: workspace.slug };
+}
+
 export async function switchWorkspaceAction(workspaceId: string) {
   const workspaces = await listMyWorkspaces();
   if (!workspaces.some((w) => w.id === workspaceId)) {
