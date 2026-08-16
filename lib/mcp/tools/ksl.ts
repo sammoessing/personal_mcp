@@ -93,7 +93,7 @@ export const kslTools: ToolDefinition[] = [
       _ctx: ToolContext
     ) => {
       try {
-        const { listings, outcome, base } = await searchVehicles(args);
+        const { listings, outcome, base, dropped } = await searchVehicles(args);
         if (listings.length === 0) {
           return textResult(
             [
@@ -109,7 +109,10 @@ export const kslTools: ToolDefinition[] = [
         const withPhone = shown.filter((listing) => listing.phone).length;
         return textResult(
           [
-            `${listings.length} listing${listings.length === 1 ? "" : "s"} parsed from ${base}, showing ${shown.length}. ${withPhone} include a phone number.`,
+            `${listings.length} matching listing${listings.length === 1 ? "" : "s"} from ${base}, showing ${shown.length}. ${withPhone} include a phone number.`,
+            dropped > 0
+              ? `(${dropped} returned by the site did not match the filters and were dropped locally — if this is most of them, the query parameter names need correcting.)`
+              : "",
             "",
             shown.map(render).join("\n\n"),
           ].join("\n")

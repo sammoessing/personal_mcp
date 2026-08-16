@@ -84,7 +84,7 @@ export function buildSearchUrl(query: SearchQuery, base = SEARCH_URL): string {
  */
 export async function searchVehicles(
   query: SearchQuery
-): Promise<{ listings: VehicleListing[]; outcome: FetchOutcome; base: string }> {
+): Promise<{ listings: VehicleListing[]; outcome: FetchOutcome; base: string; dropped: number }> {
   const params = buildSearchParams(query);
   const known = cachedSearchBase();
 
@@ -94,7 +94,8 @@ export async function searchVehicles(
     if (outcome.status === 200) {
       const listings = parseListings(outcome.body, outcome.contentType);
       if (listings.length > 0 || process.env.KSL_SEARCH_URL) {
-        return { listings, outcome, base: known };
+        const { kept, dropped } = applyFilters(listings, query);
+        return { listings: kept, outcome, base: known, dropped };
       }
     }
     // A pinned URL is trusted; a cached guess that stopped working is not, so
@@ -114,7 +115,44 @@ export async function searchVehicles(
 
   const url = `${base}${base.includes("?") ? "&" : "?"}${params}`;
   const outcome = await fetchPage(url);
-  return { listings: parseListings(outcome.body, outcome.contentType), outcome, base };
+  const { kept, dropped } = applyFilters(parseListings(outcome.body, outcome.contentType), query);
+  return { listings: kept, outcome, base, dropped };
+}
+
+/**
+ * Drops listings that do not match the requested filters.
+ *
+ * The query parameter names are a guess — the live site could not be inspected
+ * — so if KSL ignores one, the server would return unfiltered results and the
+ * caller would never know. Re-checking locally means the answer always honours
+ * what was asked, and the count of dropped rows makes a wrong parameter name
+ * visible rather than silent.
+ */
+export function applyFilters(
+  listings: VehicleListing[],
+  query: SearchQuery
+): { kept: VehicleListing[]; dropped: number } {
+  const matches = (listing: VehicleListing) => {
+    const text = (value: string | null) => (value ?? "").toLowerCase();
+    if (query.make && !text(listing.make).includes(query.make.toLowerCase())) return false;
+    if (query.model && !text(listing.model).includes(query.model.toLowerCase())) return false;
+    // A listing missing the field is kept: absent is not the same as failing.
+    if (query.yearMin !== undefined && listing.year !== null && listing.year < query.yearMin) return false;
+    if (query.yearMax !== undefined && listing.year !== null && listing.year > query.yearMax) return false;
+    if (query.priceMin !== undefined && listing.price !== null && listing.price < query.priceMin) return false;
+    if (query.priceMax !== undefined && listing.price !== null && listing.price > query.priceMax) return false;
+    if (
+      query.mileageMax !== undefined &&
+      listing.mileage !== null &&
+      listing.mileage > query.mileageMax
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const kept = listings.filter(matches);
+  return { kept, dropped: listings.length - kept.length };
 }
 
 export async function fetchListing(
