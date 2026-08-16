@@ -1,5 +1,5 @@
 import { fetchPage, type FetchOutcome } from "./client";
-import { parseListings } from "./parse";
+import { parseListings, describePayload } from "./parse";
 
 /**
  * Finding KSL's search endpoint by trying it.
@@ -21,6 +21,8 @@ export type Candidate = {
   bytes: number;
   listings: number;
   error?: string;
+  /** Why nothing parsed, filled in only when listings is 0. */
+  diagnosis?: string;
 };
 
 /** Templates tried in order; `{q}` is replaced by the encoded query string. */
@@ -59,6 +61,8 @@ async function probeOne(url: string): Promise<Candidate> {
       contentType: outcome.contentType,
       bytes: outcome.body.length,
       listings: listings.length,
+      // Only worth computing when the answer is disappointing.
+      diagnosis: listings.length === 0 ? describePayload(outcome.body) : undefined,
     };
   } catch (err) {
     return {

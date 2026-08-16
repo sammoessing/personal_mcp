@@ -11,7 +11,7 @@ import {
   fetchRobots,
   robotsDisallows,
 } from "@/lib/scrapers/ksl/discover";
-import { parseListings } from "@/lib/scrapers/ksl/parse";
+import { parseListings, describePayload } from "@/lib/scrapers/ksl/parse";
 import type { VehicleListing } from "@/lib/scrapers/ksl/types";
 
 function render(listing: VehicleListing): string {
@@ -170,7 +170,7 @@ export const kslTools: ToolDefinition[] = [
               "",
               listings[0]
                 ? render(listings[0])
-                : ["Nothing parsed. First 2000 bytes:", "", outcome.body.slice(0, 2000)].join("\n"),
+                : ["Nothing parsed. Diagnosis:", "", describePayload(outcome.body)].join("\n"),
             ].join("\n")
           );
         }
@@ -189,6 +189,12 @@ export const kslTools: ToolDefinition[] = [
 
         if (!base) {
           const worst = attempts.find((attempt) => attempt.status === 403);
+          // The largest 200 is the page most likely to be the real results
+          // page, so diagnose that one rather than all five.
+          const best = attempts
+            .filter((attempt) => attempt.status === 200 && attempt.diagnosis)
+            .sort((a, b) => b.bytes - a.bytes)[0];
+
           return textResult(
             [
               "No candidate endpoint returned parseable listings.",
@@ -197,8 +203,11 @@ export const kslTools: ToolDefinition[] = [
               "",
               worst
                 ? "At least one returned 403 — the requests are being blocked rather than mis-addressed."
-                : "Endpoints responded but nothing parsed as a vehicle. Paste the bytes above back and the field mapping can be corrected.",
-            ].join("\n")
+                : "Endpoints responded but nothing parsed as a vehicle.",
+              best ? `\nDiagnosis for ${best.url}:\n\n${best.diagnosis}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n")
           );
         }
 

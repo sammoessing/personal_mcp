@@ -293,11 +293,89 @@ export function extractJsonBlobs(html: string): unknown[] {
   // Next.js App Router: decode the flight stream and dig objects out of it.
   const flight = extractFlightPayload(html);
   if (flight) {
-    blobs.push(...extractObjectsNear(flight, ['"vin"', '"VIN"', '"make"', '"mileage"', '"listingId"']));
+    blobs.push(...extractObjectsNear(flight, VEHICLE_MARKERS));
   }
 
   return blobs;
 }
+
+/** The keys the flight-payload extractor anchors on. */
+export const VEHICLE_MARKERS = ['"vin"', '"VIN"', '"make"', '"mileage"', '"listingId"'];
+
+/**
+ * Explains why a page produced no listings.
+ *
+ * Dumping the first N bytes of a 1.6 MB App Router page shows only `<head>`
+ * boilerplate, which costs a round trip and says nothing. This reports the
+ * stage that failed instead — no flight stream, no marker keys, objects found
+ * but rejected as non-vehicles — and, when objects were found, their actual key
+ * names, which is what the field aliases have to be corrected against.
+ */
+export function describePayload(html: string): string {
+  const lines: string[] = [];
+
+  const chunkCount = [...html.matchAll(/self\.__next_f\.push\(/g)].length;
+  const flight = extractFlightPayload(html);
+  lines.push(
+    `flight stream: ${chunkCount} push() call${chunkCount === 1 ? "" : "s"}, ` +
+      `${flight.length.toLocaleString()} chars decoded`
+  );
+
+  if (!flight) {
+    lines.push("No flight payload — this is not an App Router page, or it renders server-side.");
+    lines.push("", "First 1500 bytes:", html.slice(0, 1500));
+    return lines.join("\n");
+  }
+
+  const present: string[] = [];
+  for (const marker of VEHICLE_MARKERS) {
+    const count = [...flight.matchAll(new RegExp(escapeRegExp(marker), "g"))].length;
+    if (count > 0) present.push(`${marker} ×${count}`);
+  }
+  lines.push(present.length > 0 ? `markers: ${present.join(", ")}` : "markers: none of them appear");
+
+  if (present.length === 0) {
+    // Without an anchor there is nothing to walk back from, so show the keys
+    // that do occur — the real names are somewhere in here.
+    const keys = new Map<string, number>();
+    for (const match of flight.matchAll(/"([A-Za-z_][\w]{2,30})"\s*:/g)) {
+      keys.set(match[1], (keys.get(match[1]) ?? 0) + 1);
+    }
+    const common = [...keys.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 60)
+      .map(([key, count]) => `${key}(${count})`);
+    lines.push("", "Most common keys in the stream:", common.join(" "));
+    return lines.join("\n");
+  }
+
+  const objects = extractObjectsNear(flight, VEHICLE_MARKERS);
+  const vehicles = objects.filter(looksLikeVehicle);
+  lines.push(
+    `objects recovered: ${objects.length}, of which ${vehicles.length} pass looksLikeVehicle`
+  );
+
+  const sample = (vehicles[0] ?? objects[0]) as Record<string, unknown> | undefined;
+  if (sample) {
+    lines.push("", "Keys on the first object:", Object.keys(sample).join(", "));
+    lines.push("", "Its values (truncated):");
+    for (const [key, value] of Object.entries(sample).slice(0, 40)) {
+      lines.push(`  ${key}: ${JSON.stringify(value)?.slice(0, 120)}`);
+    }
+  } else {
+    // Markers exist but nothing parsed: the surrounding text is the evidence.
+    const at = flight.indexOf(present[0].split(" ")[0]);
+    lines.push(
+      "",
+      "Markers appear but no object parsed around them. Context:",
+      flight.slice(Math.max(0, at - 600), at + 900)
+    );
+  }
+
+  return lines.join("\n");
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Parses a response body — JSON or HTML — into normalised listings. */
 export function parseListings(body: string, contentType = ""): VehicleListing[] {
