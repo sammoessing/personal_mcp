@@ -161,6 +161,20 @@ export function normalizeListing(raw: Record<string, unknown>): VehicleListing {
     else listing[field] = toText(value);
   }
 
+  // No phone field on a KSL listing, but private sellers routinely write their
+  // number into the description ("call or text 801-555-1234"), which is the
+  // seller publishing it themselves. The advertiser block riding along in every
+  // listing is excluded so a credit union's 1-800 number is never mistaken for
+  // the seller's.
+  if (!listing.phone) {
+    const description = toText(byCanonical.get("description"));
+    if (description) {
+      const advertiser = toText(byCanonical.get("number"));
+      const [fromDescription] = extractPhones(description, advertiser ? [advertiser] : []);
+      if (fromDescription) listing.phone = fromDescription;
+    }
+  }
+
   // `flatten` hoists nested keys, so a photo object's `url` surfaces as the
   // listing's own and the result links to a JPEG instead of the vehicle. The id
   // is the reliable identifier, so anything that is not plainly a listing page
@@ -337,6 +351,47 @@ export function extractJsonBlobs(html: string): unknown[] {
   }
 
   return blobs;
+}
+
+/**
+ * Phone numbers off the rendered page.
+ *
+ * KSL's listing JSON carries no phone for either private sellers or dealers.
+ * Dealers do publish one, but it reaches the page as a `tel:` link behind the
+ * Call button rather than as a field, so it is only visible once the markup is
+ * rendered. Private sellers publish none at all — their page says "Log In to
+ * Contact Seller" — so an empty result here is the honest answer, not a miss.
+ *
+ * `exclude` exists because KSL injects advertiser blocks (a credit union's
+ * 1-800 number rides along in every listing object) that would otherwise be
+ * mistaken for the seller's.
+ */
+export function extractPhones(html: string, exclude: string[] = []): string[] {
+  const blocked = new Set(exclude.map((value) => toPhone(value)).filter(Boolean) as string[]);
+  const found: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (raw: string) => {
+    const phone = toPhone(raw);
+    if (!phone || blocked.has(phone) || seen.has(phone)) return;
+    seen.add(phone);
+    found.push(phone);
+  };
+
+  // tel: links first — an explicit call target is the seller's number, whereas
+  // a number in prose might be anything.
+  for (const match of html.matchAll(/href=["']tel:([^"']+)["']/gi)) push(match[1]);
+
+  // Then numbers written out in the page text, which is how some dealers put
+  // their number in the description rather than the contact widget.
+  const text = html.replace(/<[^>]+>/g, " ");
+  for (const match of text.matchAll(
+    /(?:\+?1[\s.\-]?)?\(?([2-9]\d{2})\)?[\s.\-]?(\d{3})[\s.\-]?(\d{4})(?!\d)/g
+  )) {
+    push(`${match[1]}${match[2]}${match[3]}`);
+  }
+
+  return found;
 }
 
 /**

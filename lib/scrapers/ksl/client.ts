@@ -127,11 +127,17 @@ export function buildSearchUrl(query: SearchQuery, base = SEARCH_URL): string {
  * guess that KSL ignores costs accuracy of volume, never correctness.
  */
 export function applyPathFilters(base: string, query: SearchQuery): string {
-  if (!query.make) return base;
-  const trimmed = base.replace(/\/$/, "");
+  let path = base.replace(/\/$/, "");
+
   // Don't double-append if the caller already pinned a filtered path.
-  if (/\/make\//i.test(trimmed)) return trimmed;
-  return `${trimmed}/make/${encodeURIComponent(query.make)}`;
+  if (query.make && !/\/make\//i.test(path)) {
+    path += `/make/${encodeURIComponent(query.make)}`;
+  }
+  if (query.forSaleByOwner && !/\/sellerType\//i.test(path)) {
+    path += `/sellerType/${encodeURIComponent("For Sale By Owner")}`;
+  }
+
+  return path;
 }
 
 /**

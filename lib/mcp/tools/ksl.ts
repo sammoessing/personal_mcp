@@ -73,6 +73,10 @@ export const kslTools: ToolDefinition[] = [
       radius: z.number().int().optional().describe("Miles from zip"),
       keyword: z.string().optional(),
       page: z.number().int().min(0).optional(),
+      forSaleByOwner: z
+        .boolean()
+        .default(false)
+        .describe("Only private-party listings, excluding dealerships"),
       limit: z.number().int().min(1).max(50).default(20),
     },
     handler: async (
@@ -88,6 +92,7 @@ export const kslTools: ToolDefinition[] = [
         radius?: number;
         keyword?: string;
         page?: number;
+        forSaleByOwner: boolean;
         limit: number;
       },
       _ctx: ToolContext
@@ -110,6 +115,12 @@ export const kslTools: ToolDefinition[] = [
         return textResult(
           [
             `${listings.length} matching listing${listings.length === 1 ? "" : "s"} from ${base}, showing ${shown.length}. ${withPhone} include a phone number.`,
+            // Say why rather than let a zero read as a broken scraper: KSL
+            // publishes no phone field, so a number is only ever present when
+            // the seller wrote it into their own description.
+            withPhone === 0
+              ? "KSL publishes no phone field — numbers here come only from sellers who wrote one into their description. Private sellers are otherwise contacted through KSL's on-site form, which requires a KSL login."
+              : "",
             dropped > 0
               ? `(${dropped} returned by the site did not match the filters and were dropped locally — if this is most of them, the query parameter names need correcting.)`
               : "",

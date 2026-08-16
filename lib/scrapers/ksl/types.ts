@@ -48,4 +48,6 @@ export type SearchQuery = {
   keyword?: string;
   page?: number;
   perPage?: number;
+  /** Restrict to private sellers. Dealers list the same cars at retail. */
+  forSaleByOwner?: boolean;
 };
