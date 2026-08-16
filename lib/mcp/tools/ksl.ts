@@ -11,7 +11,7 @@ import {
   fetchRobots,
   robotsDisallows,
 } from "@/lib/scrapers/ksl/discover";
-import { parseListings, describePayload } from "@/lib/scrapers/ksl/parse";
+import { parseListings, parseRawListings, describePayload } from "@/lib/scrapers/ksl/parse";
 import type { VehicleListing } from "@/lib/scrapers/ksl/types";
 
 function render(listing: VehicleListing): string {
@@ -127,18 +127,44 @@ export const kslTools: ToolDefinition[] = [
     title: "Get one KSL listing",
     description:
       "Fetch full details for a single KSL vehicle listing by its id, including any fields the search results omit.",
-    inputSchema: { listingId: z.string() },
-    handler: async (args: { listingId: string }, _ctx: ToolContext) => {
+    inputSchema: {
+      listingId: z.string(),
+      raw: z
+        .boolean()
+        .default(false)
+        .describe("Dump the untouched JSON object, including nested fields normalisation drops"),
+    },
+    handler: async (args: { listingId: string; raw: boolean }, _ctx: ToolContext) => {
       try {
         const { listing, outcome } = await fetchListing(args.listingId);
         if (!listing) return errorResult(`No vehicle could be parsed from ${outcome.url}.`);
 
-        const extra = Object.entries(listing.extra).slice(0, 25);
+        if (args.raw) {
+          const objects = parseRawListings(outcome.body, outcome.contentType);
+          const match =
+            objects.find((o) => String(o.id ?? o.listingId) === args.listingId) ?? objects[0];
+          return textResult(
+            [
+              `${outcome.url} — ${objects.length} object(s) recovered`,
+              "",
+              JSON.stringify(match, null, 2).slice(0, 40_000),
+            ].join("\n")
+          );
+        }
+
+        // Every field, not a slice: a truncated dump is exactly how a phone
+        // field beyond the cutoff stays invisible. Contact-ish keys first so
+        // they are not buried.
+        const entries = Object.entries(listing.extra);
+        const isContact = ([key]: [string, unknown]) =>
+          /phone|contact|email|cell|mobile|tel|seller|member/i.test(key);
+        const ordered = [...entries.filter(isContact), ...entries.filter((e) => !isContact(e))];
+
         return textResult(
           [
             render(listing),
-            extra.length > 0 ? "\nOther fields on the listing:" : "",
-            ...extra.map(([key, value]) => `  ${key}: ${String(value).slice(0, 120)}`),
+            ordered.length > 0 ? `\nAll ${ordered.length} other fields on the listing:` : "",
+            ...ordered.map(([key, value]) => `  ${key}: ${String(value).slice(0, 200)}`),
           ]
             .filter(Boolean)
             .join("\n")

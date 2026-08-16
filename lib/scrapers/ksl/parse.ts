@@ -417,6 +417,29 @@ export function describePayload(html: string): string {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * The raw vehicle objects, before normalisation drops anything.
+ *
+ * normalizeListing keeps unrecognised scalars in `extra` but discards nested
+ * objects, so a phone hiding under `contact: {…}` disappears without trace.
+ * This returns the untouched objects so that can be seen rather than guessed.
+ */
+export function parseRawListings(body: string, contentType = ""): Record<string, unknown>[] {
+  const blobs: unknown[] = [];
+  if (contentType.includes("json") || /^\s*[[{]/.test(body)) {
+    try {
+      blobs.push(JSON.parse(body));
+    } catch {
+      // Fall through to HTML extraction.
+    }
+  }
+  if (blobs.length === 0) blobs.push(...extractJsonBlobs(body));
+
+  const raw: Record<string, unknown>[] = [];
+  for (const blob of blobs) collectListings(blob, raw);
+  return raw;
+}
+
 /** Parses a response body — JSON or HTML — into normalised listings. */
 export function parseListings(body: string, contentType = ""): VehicleListing[] {
   const blobs: unknown[] = [];
