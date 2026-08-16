@@ -1,0 +1,177 @@
+import { z } from "zod";
+import { textResult, errorResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
+import { searchVehicles, fetchListing, fetchPage, buildSearchUrl } from "@/lib/scrapers/ksl/client";
+import { parseListings } from "@/lib/scrapers/ksl/parse";
+import type { VehicleListing } from "@/lib/scrapers/ksl/types";
+
+function render(listing: VehicleListing): string {
+  const name = [listing.year, listing.make, listing.model, listing.trim]
+    .filter(Boolean)
+    .join(" ");
+  const lines = [
+    name || "(unidentified vehicle)",
+    listing.vin ? `  VIN: ${listing.vin}` : null,
+    listing.price !== null ? `  Price: $${listing.price.toLocaleString()}` : null,
+    listing.mileage !== null ? `  Mileage: ${listing.mileage.toLocaleString()}` : null,
+    [
+      listing.bodyStyle && `body ${listing.bodyStyle}`,
+      listing.transmission && `trans ${listing.transmission}`,
+      listing.drivetrain && `drive ${listing.drivetrain}`,
+      listing.fuelType && `fuel ${listing.fuelType}`,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null,
+    [listing.exteriorColor && `ext ${listing.exteriorColor}`, listing.interiorColor && `int ${listing.interiorColor}`]
+      .filter(Boolean)
+      .join(" · ") || null,
+    listing.titleStatus ? `  Title: ${listing.titleStatus}` : null,
+    [listing.city, listing.state, listing.zip].filter(Boolean).join(", ") || null,
+    listing.sellerName || listing.sellerType
+      ? `  Seller: ${[listing.sellerName, listing.sellerType].filter(Boolean).join(" · ")}`
+      : null,
+    listing.phone ? `  Phone: ${listing.phone}` : null,
+    listing.postedAt ? `  Posted: ${listing.postedAt}` : null,
+    listing.url ? `  ${listing.url}` : null,
+    listing.listingId ? `  id: ${listing.listingId}` : null,
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+/**
+ * KSL vehicle listings.
+ *
+ * Phone numbers are returned when the listing exposes them, at the owner's
+ * request. Whether a given number may then be called or texted is a decision
+ * for the caller — scraped numbers are not consent under the TCPA, and DNC
+ * screening happens outside this tool.
+ */
+export const kslTools: ToolDefinition[] = [
+  {
+    name: "ksl_search_vehicles",
+    title: "Search KSL vehicle listings",
+    description:
+      "Search KSL Cars for vehicle listings and return structured details — VIN, year, make, model, trim, price, mileage, title status, location, seller, and phone where the listing publishes one.",
+    inputSchema: {
+      make: z.string().optional(),
+      model: z.string().optional(),
+      yearMin: z.number().int().optional(),
+      yearMax: z.number().int().optional(),
+      priceMin: z.number().int().optional(),
+      priceMax: z.number().int().optional(),
+      mileageMax: z.number().int().optional(),
+      zip: z.string().optional().describe("Centre of the search radius"),
+      radius: z.number().int().optional().describe("Miles from zip"),
+      keyword: z.string().optional(),
+      page: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+    },
+    handler: async (
+      args: {
+        make?: string;
+        model?: string;
+        yearMin?: number;
+        yearMax?: number;
+        priceMin?: number;
+        priceMax?: number;
+        mileageMax?: number;
+        zip?: string;
+        radius?: number;
+        keyword?: string;
+        page?: number;
+        limit: number;
+      },
+      _ctx: ToolContext
+    ) => {
+      try {
+        const { listings, outcome } = await searchVehicles(args);
+        if (listings.length === 0) {
+          return textResult(
+            [
+              `No listings parsed from ${outcome.url}.`,
+              "",
+              "Either the search genuinely matched nothing, or the page shape has changed.",
+              "Run ksl_probe with the same filters to see what the response actually contains.",
+            ].join("\n")
+          );
+        }
+
+        const shown = listings.slice(0, args.limit);
+        const withPhone = shown.filter((listing) => listing.phone).length;
+        return textResult(
+          [
+            `${listings.length} listing${listings.length === 1 ? "" : "s"} parsed, showing ${shown.length}. ${withPhone} include a phone number.`,
+            "",
+            shown.map(render).join("\n\n"),
+          ].join("\n")
+        );
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : "The search failed.");
+      }
+    },
+  },
+  {
+    name: "ksl_get_listing",
+    title: "Get one KSL listing",
+    description:
+      "Fetch full details for a single KSL vehicle listing by its id, including any fields the search results omit.",
+    inputSchema: { listingId: z.string() },
+    handler: async (args: { listingId: string }, _ctx: ToolContext) => {
+      try {
+        const { listing, outcome } = await fetchListing(args.listingId);
+        if (!listing) return errorResult(`No vehicle could be parsed from ${outcome.url}.`);
+
+        const extra = Object.entries(listing.extra).slice(0, 25);
+        return textResult(
+          [
+            render(listing),
+            extra.length > 0 ? "\nOther fields on the listing:" : "",
+            ...extra.map(([key, value]) => `  ${key}: ${String(value).slice(0, 120)}`),
+          ]
+            .filter(Boolean)
+            .join("\n")
+        );
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : "The fetch failed.");
+      }
+    },
+  },
+  {
+    name: "ksl_probe",
+    title: "Diagnose the KSL response shape",
+    description:
+      "Fetch a KSL search page and report what came back — status, content type, which JSON payloads were found, and the field names on the first candidate listing. Use this when a search returns nothing, to see whether the site's shape has changed.",
+    inputSchema: {
+      url: z.string().optional().describe("Full URL to probe; defaults to a bare search"),
+    },
+    handler: async (args: { url?: string }, _ctx: ToolContext) => {
+      try {
+        const target = args.url ?? buildSearchUrl({ perPage: 24 });
+        const outcome = await fetchPage(target);
+        const listings = parseListings(outcome.body, outcome.contentType);
+
+        return textResult(
+          [
+            `URL: ${outcome.url}`,
+            `HTTP ${outcome.status} · ${outcome.contentType || "no content-type"} · ${outcome.body.length.toLocaleString()} bytes`,
+            `Listings parsed: ${listings.length}`,
+            "",
+            listings[0]
+              ? [
+                  "First parsed listing:",
+                  render(listings[0]),
+                  "",
+                  `Unmapped fields: ${Object.keys(listings[0].extra).join(", ") || "none"}`,
+                ].join("\n")
+              : [
+                  "Nothing parsed. First 1500 bytes of the response:",
+                  "",
+                  outcome.body.slice(0, 1500),
+                ].join("\n"),
+          ].join("\n")
+        );
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : "The probe failed.");
+      }
+    },
+  },
+];
