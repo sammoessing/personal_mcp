@@ -182,6 +182,80 @@ export function collectListings(node: unknown, found: Record<string, unknown>[] 
  * site like this realistically uses: a Next.js data island, a redux-style
  * preload assigned to `window`, and a bare `listings:` array in inline script.
  */
+/**
+ * Next.js App Router streams its data as flight chunks rather than a single
+ * JSON island:
+ *
+ *   <script>self.__next_f.push([1,"3:[\"$\",\"div\",null,{...}]\n"])</script>
+ *
+ * Each chunk is a JS string literal holding part of one continuous stream, so
+ * they have to be decoded and concatenated before anything can be found in
+ * them — a listing's JSON can straddle two chunks.
+ */
+export function extractFlightPayload(html: string): string {
+  const chunks: string[] = [];
+  // The quoted literal is valid JSON string syntax, so JSON.parse handles the
+  // escaping (\", \\, \n, \uXXXX) correctly rather than a hand-rolled unescape.
+  for (const match of html.matchAll(/self\.__next_f\.push\(\[\d+\s*,\s*("(?:[^"\\]|\\.)*")/g)) {
+    try {
+      chunks.push(JSON.parse(match[1]) as string);
+    } catch {
+      // A chunk that will not decode is not usable; skip it.
+    }
+  }
+  return chunks.join("");
+}
+
+/**
+ * Pulls balanced JSON objects out of arbitrary text, anchored on marker keys.
+ *
+ * Scanning every `{` in a 1.6 MB payload would be wasteful, so this only tries
+ * positions shortly before a marker like `"vin"`, then walks back to the
+ * enclosing brace and parses forward from there.
+ */
+export function extractObjectsNear(text: string, markers: string[], lookBehind = 6000): unknown[] {
+  const found: unknown[] = [];
+  const tried = new Set<number>();
+
+  for (const marker of markers) {
+    let at = text.indexOf(marker);
+    while (at !== -1 && found.length < 500) {
+      for (let start = at; start >= Math.max(0, at - lookBehind); start--) {
+        if (text[start] !== "{" || tried.has(start)) continue;
+        tried.add(start);
+
+        // Walk forward tracking depth, respecting strings and escapes.
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        let end = -1;
+        for (let i = start; i < Math.min(text.length, start + 200_000); i++) {
+          const ch = text[i];
+          if (escaped) { escaped = false; continue; }
+          if (ch === "\\") { escaped = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (ch === "{") depth++;
+          else if (ch === "}") {
+            depth--;
+            if (depth === 0) { end = i + 1; break; }
+          }
+        }
+        if (end === -1 || end <= at) continue;
+
+        try {
+          found.push(JSON.parse(text.slice(start, end)));
+          break;
+        } catch {
+          // Not a self-contained object from here; try an earlier brace.
+        }
+      }
+      at = text.indexOf(marker, at + marker.length);
+    }
+  }
+  return found;
+}
+
 export function extractJsonBlobs(html: string): unknown[] {
   const blobs: unknown[] = [];
 
@@ -214,6 +288,12 @@ export function extractJsonBlobs(html: string): unknown[] {
     } catch {
       // Ignore truncated matches.
     }
+  }
+
+  // Next.js App Router: decode the flight stream and dig objects out of it.
+  const flight = extractFlightPayload(html);
+  if (flight) {
+    blobs.push(...extractObjectsNear(flight, ['"vin"', '"VIN"', '"make"', '"mileage"', '"listingId"']));
   }
 
   return blobs;
