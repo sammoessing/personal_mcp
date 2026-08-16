@@ -22,7 +22,8 @@ const ALIASES: Record<keyof Omit<VehicleListing, "extra">, string[]> = {
   url: ["url", "href", "permalink", "detailurl", "link"],
 
   vin: ["vin", "vehiclevin", "vinnumber"],
-  year: ["year", "modelyear", "vehicleyear"],
+  // KSL calls the model year "makeYear".
+  year: ["year", "modelyear", "vehicleyear", "makeyear"],
   make: ["make", "makename", "manufacturer", "brand"],
   model: ["model", "modelname"],
   trim: ["trim", "trimname", "series", "submodel", "trimlevel"],
@@ -36,7 +37,9 @@ const ALIASES: Record<keyof Omit<VehicleListing, "extra">, string[]> = {
   fuelType: ["fueltype", "fuel"],
   exteriorColor: ["exteriorcolor", "extcolor", "color", "exterior"],
   interiorColor: ["interiorcolor", "intcolor", "interior"],
-  titleStatus: ["titlestatus", "titletype", "title"],
+  // Not bare "title": on KSL that is the listing headline ("2014 Ford F-150
+  // FX4"), which would masquerade as a clean/salvage title status.
+  titleStatus: ["titlestatus", "titletype", "titlebrand"],
   condition: ["condition", "vehiclecondition"],
 
   sellerName: ["sellername", "contactname", "dealername", "name", "seller"],
@@ -108,6 +111,30 @@ function flatten(source: Record<string, unknown>, depth = 2): Record<string, unk
 
 const NUMERIC_FIELDS = new Set(["year", "price", "mileage"]);
 
+/** KSL timestamps are epoch seconds; a bare 1786922216 helps nobody. */
+function toTimestamp(value: unknown): string | null {
+  const text = toText(value);
+  if (!text) return null;
+
+  const epoch = Number(text);
+  if (Number.isFinite(epoch) && epoch > 0) {
+    // Ten digits is seconds, thirteen is milliseconds.
+    const date = new Date(epoch > 1e12 ? epoch : epoch * 1000);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+
+  const parsed = new Date(text);
+  // An unparseable date is returned as written rather than discarded.
+  return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString();
+}
+
+const LISTING_BASE = () => process.env.KSL_LISTING_URL ?? "https://cars.ksl.com/listing";
+
+/** A photo CDN link is not a listing page. */
+function isAssetUrl(url: string): boolean {
+  return /\.(jpe?g|png|webp|gif|avif|svg)(\?|$)/i.test(url) || /image\.ksldigital\.com/i.test(url);
+}
+
 export function normalizeListing(raw: Record<string, unknown>): VehicleListing {
   const flat = flatten(raw);
   const byCanonical = new Map<string, unknown>();
@@ -129,8 +156,21 @@ export function normalizeListing(raw: Record<string, unknown>): VehicleListing {
     }
 
     if (field === "phone") listing[field] = toPhone(value);
+    else if (field === "postedAt") listing[field] = toTimestamp(value);
     else if (NUMERIC_FIELDS.has(field)) listing[field] = toNumber(value);
     else listing[field] = toText(value);
+  }
+
+  // `flatten` hoists nested keys, so a photo object's `url` surfaces as the
+  // listing's own and the result links to a JPEG instead of the vehicle. The id
+  // is the reliable identifier, so anything that is not plainly a listing page
+  // is replaced by a URL built from it.
+  const candidateUrl = toText(listing.url);
+  const id = toText(listing.listingId);
+  if (candidateUrl?.startsWith("/")) {
+    listing.url = `https://cars.ksl.com${candidateUrl}`;
+  } else if (!candidateUrl || isAssetUrl(candidateUrl) || !/ksl\.com/i.test(candidateUrl)) {
+    listing.url = id ? `${LISTING_BASE().replace(/\/$/, "")}/${id}` : null;
   }
 
   // Anything unrecognised is surfaced rather than dropped, so a field we did
