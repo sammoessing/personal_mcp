@@ -163,15 +163,31 @@ export const kslTools: ToolDefinition[] = [
         if (args.url) {
           const outcome = await fetchPage(args.url);
           const listings = parseListings(outcome.body, outcome.contentType);
+
+          // Testing a filter URL needs the distribution, not one example: 24
+          // listings that are all Fords proves ?make=Ford works, one Ford
+          // proves nothing.
+          const makes = new Map<string, number>();
+          for (const listing of listings) {
+            const make = listing.make ?? "(none)";
+            makes.set(make, (makes.get(make) ?? 0) + 1);
+          }
+          const withPhone = listings.filter((listing) => listing.phone).length;
+
           return textResult(
             [
               `${outcome.url}`,
               `HTTP ${outcome.status} · ${outcome.contentType || "no content-type"} · ${outcome.body.length.toLocaleString()} bytes · ${listings.length} listings`,
+              listings.length > 0
+                ? `makes: ${[...makes.entries()].map(([make, count]) => `${make}×${count}`).join(", ")} · ${withPhone} with phone`
+                : "",
               "",
               listings[0]
                 ? render(listings[0])
                 : ["Nothing parsed. Diagnosis:", "", describePayload(outcome.body)].join("\n"),
-            ].join("\n")
+            ]
+              .filter(Boolean)
+              .join("\n")
           );
         }
 
