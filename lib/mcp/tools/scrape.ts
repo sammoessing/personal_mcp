@@ -5,6 +5,7 @@ import {
   scrapingBeeConfigured,
   redactKey,
 } from "@/lib/scrapers/scrapingbee";
+import { detectBotChallenge } from "@/lib/scrapers/ksl/parse";
 
 /** Strips markup so an agent gets readable text rather than a page of tags. */
 function toText(html: string): string {
@@ -103,6 +104,9 @@ export const scrapeTools: ToolDefinition[] = [
               waitMs: args.waitForSelector ? undefined : 3000,
             })
           : await directFetch(args.url);
+
+        const blocked = detectBotChallenge(result.body);
+        if (blocked) return errorResult(blocked);
 
         if (result.status >= 400) {
           return errorResult(

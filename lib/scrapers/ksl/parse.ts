@@ -339,6 +339,22 @@ export function extractJsonBlobs(html: string): unknown[] {
   return blobs;
 }
 
+/**
+ * KSL sits behind PerimeterX. When it decides a caller is a bot it answers 403
+ * with a challenge descriptor rather than the page, which otherwise reads as a
+ * plain rejection and sends you looking for the wrong bug.
+ */
+export function detectBotChallenge(body: string): string | null {
+  if (!/perimeterx|px-cdn\.net|captcha\.px/i.test(body)) return null;
+  const appId = body.match(/"appId"\s*:\s*"([^"]+)"/)?.[1];
+  return (
+    `Blocked by PerimeterX bot detection${appId ? ` (appId ${appId})` : ""}. ` +
+    "The request reached KSL and was refused as automated — this is not a bad URL or a parse failure. " +
+    "A datacenter IP gets fingerprinted after repeated fetches; a residential IP with a real browser is what clears it, " +
+    "so set SCRAPINGBEE_API_KEY (and SCRAPINGBEE_PREMIUM=true) in the deployment environment. Requests already in flight will keep failing until the fingerprint ages out."
+  );
+}
+
 /** The keys the flight-payload extractor anchors on. */
 export const VEHICLE_MARKERS = ['"vin"', '"VIN"', '"make"', '"mileage"', '"listingId"'];
 
@@ -353,6 +369,11 @@ export const VEHICLE_MARKERS = ['"vin"', '"VIN"', '"make"', '"mileage"', '"listi
  */
 export function describePayload(html: string): string {
   const lines: string[] = [];
+
+  // Check this first: a challenge page has no flight stream, so every other
+  // branch below would misreport a block as a page-shape change.
+  const challenge = detectBotChallenge(html);
+  if (challenge) return challenge;
 
   const chunkCount = [...html.matchAll(/self\.__next_f\.push\(/g)].length;
   const flight = extractFlightPayload(html);

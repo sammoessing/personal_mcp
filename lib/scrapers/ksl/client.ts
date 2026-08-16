@@ -1,4 +1,4 @@
-import { parseListings } from "./parse";
+import { parseListings, detectBotChallenge } from "./parse";
 import { cachedSearchBase, discoverSearchEndpoint } from "./discover";
 import {
   scrapeViaScrapingBee,
@@ -118,6 +118,23 @@ export function buildSearchUrl(query: SearchQuery, base = SEARCH_URL): string {
 }
 
 /**
+ * KSL filters by path segment, not query string: /search/make/Ford returns 20
+ * Fords, while ?make=Ford returns an unfiltered page that then has to be
+ * filtered locally — which only ever narrows the first page of results.
+ *
+ * Only `make` is applied here because only `make` was confirmed against the
+ * live site; the rest stay query parameters and are re-checked locally, so a
+ * guess that KSL ignores costs accuracy of volume, never correctness.
+ */
+export function applyPathFilters(base: string, query: SearchQuery): string {
+  if (!query.make) return base;
+  const trimmed = base.replace(/\/$/, "");
+  // Don't double-append if the caller already pinned a filtered path.
+  if (/\/make\//i.test(trimmed)) return trimmed;
+  return `${trimmed}/make/${encodeURIComponent(query.make)}`;
+}
+
+/**
  * Searches, discovering the endpoint on first use when one has not been pinned
  * via KSL_SEARCH_URL. Discovery result is cached per instance.
  */
@@ -128,8 +145,11 @@ export async function searchVehicles(
   const known = cachedSearchBase();
 
   if (known) {
-    const url = `${known}${known.includes("?") ? "&" : "?"}${params}`;
+    const filtered = applyPathFilters(known, query);
+    const url = `${filtered}${filtered.includes("?") ? "&" : "?"}${params}`;
     const outcome = await fetchPage(url);
+    const blocked = detectBotChallenge(outcome.body);
+    if (blocked) throw new Error(blocked);
     if (outcome.status === 200) {
       const listings = parseListings(outcome.body, outcome.contentType);
       if (listings.length > 0 || process.env.KSL_SEARCH_URL) {
@@ -152,8 +172,11 @@ export async function searchVehicles(
     );
   }
 
-  const url = `${base}${base.includes("?") ? "&" : "?"}${params}`;
+  const filtered = applyPathFilters(base, query);
+  const url = `${filtered}${filtered.includes("?") ? "&" : "?"}${params}`;
   const outcome = await fetchPage(url);
+  const blocked = detectBotChallenge(outcome.body);
+  if (blocked) throw new Error(blocked);
   const { kept, dropped } = applyFilters(parseListings(outcome.body, outcome.contentType), query);
   return { listings: kept, outcome, base, dropped };
 }
@@ -199,6 +222,8 @@ export async function fetchListing(
 ): Promise<{ listing: VehicleListing | null; outcome: FetchOutcome }> {
   const url = `${LISTING_URL.replace(/\/$/, "")}/${encodeURIComponent(listingId)}`;
   const outcome = await fetchPage(url);
+  const blocked = detectBotChallenge(outcome.body);
+  if (blocked) throw new Error(blocked);
   if (outcome.status !== 200) {
     throw new Error(`KSL returned HTTP ${outcome.status} for ${url}.`);
   }
