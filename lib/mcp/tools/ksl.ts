@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { textResult, errorResult, type ToolDefinition, type ToolContext } from "@/lib/mcp/types";
-import { searchVehicles, fetchListing, fetchPage, buildSearchUrl } from "@/lib/scrapers/ksl/client";
+import {
+  searchVehicles,
+  fetchListing,
+  fetchPage,
+  buildSearchParams,
+} from "@/lib/scrapers/ksl/client";
+import {
+  discoverSearchEndpoint,
+  fetchRobots,
+  robotsDisallows,
+} from "@/lib/scrapers/ksl/discover";
 import { parseListings } from "@/lib/scrapers/ksl/parse";
 import type { VehicleListing } from "@/lib/scrapers/ksl/types";
 
@@ -83,7 +93,7 @@ export const kslTools: ToolDefinition[] = [
       _ctx: ToolContext
     ) => {
       try {
-        const { listings, outcome } = await searchVehicles(args);
+        const { listings, outcome, base } = await searchVehicles(args);
         if (listings.length === 0) {
           return textResult(
             [
@@ -99,7 +109,7 @@ export const kslTools: ToolDefinition[] = [
         const withPhone = shown.filter((listing) => listing.phone).length;
         return textResult(
           [
-            `${listings.length} listing${listings.length === 1 ? "" : "s"} parsed, showing ${shown.length}. ${withPhone} include a phone number.`,
+            `${listings.length} listing${listings.length === 1 ? "" : "s"} parsed from ${base}, showing ${shown.length}. ${withPhone} include a phone number.`,
             "",
             shown.map(render).join("\n\n"),
           ].join("\n")
@@ -145,28 +155,66 @@ export const kslTools: ToolDefinition[] = [
     },
     handler: async (args: { url?: string }, _ctx: ToolContext) => {
       try {
-        const target = args.url ?? buildSearchUrl({ perPage: 24 });
-        const outcome = await fetchPage(target);
-        const listings = parseListings(outcome.body, outcome.contentType);
+        // A single explicit URL when given; otherwise every candidate, so one
+        // run identifies which endpoint works rather than confirming one guess.
+        if (args.url) {
+          const outcome = await fetchPage(args.url);
+          const listings = parseListings(outcome.body, outcome.contentType);
+          return textResult(
+            [
+              `${outcome.url}`,
+              `HTTP ${outcome.status} · ${outcome.contentType || "no content-type"} · ${outcome.body.length.toLocaleString()} bytes · ${listings.length} listings`,
+              "",
+              listings[0]
+                ? render(listings[0])
+                : ["Nothing parsed. First 2000 bytes:", "", outcome.body.slice(0, 2000)].join("\n"),
+            ].join("\n")
+          );
+        }
+
+        const params = buildSearchParams({ perPage: 24 });
+        const { base, attempts } = await discoverSearchEndpoint(params);
+
+        const table = attempts
+          .map(
+            (attempt) =>
+              `  ${attempt.error ? "ERR " : `${attempt.status} `}` +
+              `${attempt.listings} listings · ${attempt.bytes.toLocaleString()} bytes · ${attempt.url}` +
+              (attempt.error ? `\n       ${attempt.error}` : "")
+          )
+          .join("\n");
+
+        if (!base) {
+          const worst = attempts.find((attempt) => attempt.status === 403);
+          return textResult(
+            [
+              "No candidate endpoint returned parseable listings.",
+              "",
+              table,
+              "",
+              worst
+                ? "At least one returned 403 — the requests are being blocked rather than mis-addressed."
+                : "Endpoints responded but nothing parsed as a vehicle. Paste the bytes above back and the field mapping can be corrected.",
+            ].join("\n")
+          );
+        }
+
+        const origin = new URL(base).origin;
+        const robots = await fetchRobots(origin);
+        const path = new URL(base).pathname;
 
         return textResult(
           [
-            `URL: ${outcome.url}`,
-            `HTTP ${outcome.status} · ${outcome.contentType || "no content-type"} · ${outcome.body.length.toLocaleString()} bytes`,
-            `Listings parsed: ${listings.length}`,
+            `Working endpoint: ${base}`,
             "",
-            listings[0]
-              ? [
-                  "First parsed listing:",
-                  render(listings[0]),
-                  "",
-                  `Unmapped fields: ${Object.keys(listings[0].extra).join(", ") || "none"}`,
-                ].join("\n")
-              : [
-                  "Nothing parsed. First 1500 bytes of the response:",
-                  "",
-                  outcome.body.slice(0, 1500),
-                ].join("\n"),
+            "All candidates:",
+            table,
+            "",
+            robots
+              ? `robots.txt ${robotsDisallows(robots, path) ? `DISALLOWS ${path} for *` : `permits ${path} for *`}`
+              : "robots.txt could not be read.",
+            "",
+            "Set KSL_SEARCH_URL to this endpoint to skip discovery on every cold start.",
           ].join("\n")
         );
       } catch (err) {

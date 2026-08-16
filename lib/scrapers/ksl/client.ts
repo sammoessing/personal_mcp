@@ -1,4 +1,5 @@
 import { parseListings } from "./parse";
+import { cachedSearchBase, discoverSearchEndpoint } from "./discover";
 import type { SearchQuery, VehicleListing } from "./types";
 
 /**
@@ -47,8 +48,9 @@ export async function fetchPage(url: string, timeoutMs = 20_000): Promise<FetchO
   }
 }
 
-export function buildSearchUrl(query: SearchQuery): string {
-  const url = new URL(SEARCH_URL);
+/** Query parameters only, so a discovered base can be combined with them. */
+export function buildSearchParams(query: SearchQuery): string {
+  const url = new URL("https://example.invalid/");
   const set = (key: string, value: string | number | undefined) => {
     if (value !== undefined && value !== null && `${value}` !== "") {
       url.searchParams.set(key, String(value));
@@ -68,19 +70,51 @@ export function buildSearchUrl(query: SearchQuery): string {
   set("page", query.page);
   set("perPage", query.perPage ?? 24);
 
-  return url.toString();
+  return url.searchParams.toString();
 }
 
+export function buildSearchUrl(query: SearchQuery, base = SEARCH_URL): string {
+  const params = buildSearchParams(query);
+  return params ? `${base}${base.includes("?") ? "&" : "?"}${params}` : base;
+}
+
+/**
+ * Searches, discovering the endpoint on first use when one has not been pinned
+ * via KSL_SEARCH_URL. Discovery result is cached per instance.
+ */
 export async function searchVehicles(
   query: SearchQuery
-): Promise<{ listings: VehicleListing[]; outcome: FetchOutcome }> {
-  const outcome = await fetchPage(buildSearchUrl(query));
-  if (outcome.status !== 200) {
+): Promise<{ listings: VehicleListing[]; outcome: FetchOutcome; base: string }> {
+  const params = buildSearchParams(query);
+  const known = cachedSearchBase();
+
+  if (known) {
+    const url = `${known}${known.includes("?") ? "&" : "?"}${params}`;
+    const outcome = await fetchPage(url);
+    if (outcome.status === 200) {
+      const listings = parseListings(outcome.body, outcome.contentType);
+      if (listings.length > 0 || process.env.KSL_SEARCH_URL) {
+        return { listings, outcome, base: known };
+      }
+    }
+    // A pinned URL is trusted; a cached guess that stopped working is not, so
+    // fall through and re-discover.
+  }
+
+  const { base, attempts } = await discoverSearchEndpoint(params);
+  if (!base) {
+    const summary = attempts
+      .map((a) => `  ${a.url} → ${a.error ?? `HTTP ${a.status}, ${a.bytes} bytes, ${a.listings} listings`}`)
+      .join("\n");
     throw new Error(
-      `KSL returned HTTP ${outcome.status} for ${outcome.url}. If this is a 403, the request was blocked; if a 404, the search path has changed and KSL_SEARCH_URL needs updating.`
+      `No KSL search endpoint returned parseable listings.\n${summary}\n\n` +
+        "If these are 403s the requests are being blocked; if they are 200s with no listings, the page shape has changed. Run ksl_probe for the raw response."
     );
   }
-  return { listings: parseListings(outcome.body, outcome.contentType), outcome };
+
+  const url = `${base}${base.includes("?") ? "&" : "?"}${params}`;
+  const outcome = await fetchPage(url);
+  return { listings: parseListings(outcome.body, outcome.contentType), outcome, base };
 }
 
 export async function fetchListing(
