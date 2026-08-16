@@ -1,5 +1,10 @@
 import { parseListings } from "./parse";
 import { cachedSearchBase, discoverSearchEndpoint } from "./discover";
+import {
+  scrapeViaScrapingBee,
+  scrapingBeeConfigured,
+  redactKey,
+} from "@/lib/scrapers/scrapingbee";
 import type { SearchQuery, VehicleListing } from "./types";
 
 /**
@@ -23,6 +28,10 @@ export type FetchOutcome = {
   status: number;
   contentType: string;
   body: string;
+  /** Whether the request went through ScrapingBee rather than straight out. */
+  viaProxy: boolean;
+  /** ScrapingBee credits spent, when it was used. */
+  cost: number | null;
 };
 
 /**
@@ -33,6 +42,32 @@ export type FetchOutcome = {
  * fragile and a terms-of-service problem. A block surfaces as a block.
  */
 export async function fetchPage(url: string, timeoutMs = 20_000): Promise<FetchOutcome> {
+  // With a key configured every fetch is rendered and proxied. A direct fetch
+  // from a data centre is what classifieds sites block first, and a listing
+  // page that hydrates client-side returns an empty shell without rendering —
+  // which parses to zero listings and looks like "no results" rather than a
+  // failure.
+  if (scrapingBeeConfigured()) {
+    const result = await scrapeViaScrapingBee(
+      url,
+      {
+        renderJs: true,
+        premium: process.env.SCRAPINGBEE_PREMIUM === "true",
+        countryCode: process.env.SCRAPINGBEE_COUNTRY ?? "us",
+        waitMs: 3000,
+      },
+      Math.max(timeoutMs, 60_000)
+    );
+    return {
+      url,
+      status: result.status,
+      contentType: result.contentType,
+      body: result.body,
+      viaProxy: true,
+      cost: result.cost,
+    };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -42,7 +77,11 @@ export async function fetchPage(url: string, timeoutMs = 20_000): Promise<FetchO
       status: response.status,
       contentType: response.headers.get("content-type") ?? "",
       body: await response.text(),
+      viaProxy: false,
+      cost: null,
     };
+  } catch (err) {
+    throw new Error(redactKey(err instanceof Error ? err.message : "Request failed."));
   } finally {
     clearTimeout(timer);
   }

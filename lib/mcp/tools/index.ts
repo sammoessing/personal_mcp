@@ -10,6 +10,8 @@ import { brainTools } from "./brain";
 import { fileTools } from "./files";
 import { remoteTools } from "./remote";
 import { kslTools } from "./ksl";
+import { scrapeTools } from "./scrape";
+import { twilioTools } from "@/lib/connectors/twilio";
 import type { ToolDefinition } from "@/lib/mcp/types";
 
 /** Every tool this MCP server can expose: built-ins plus one group per connector. */
@@ -18,6 +20,8 @@ export const ALL_TOOLS: ToolDefinition[] = [
   ...fileTools,
   ...remoteTools,
   ...kslTools,
+  ...scrapeTools,
+  ...twilioTools,
   ...skillTools,
   ...githubTools,
   ...linearTools,
