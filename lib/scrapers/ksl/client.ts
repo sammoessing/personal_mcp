@@ -202,6 +202,13 @@ export function applyFilters(
 ): { kept: VehicleListing[]; dropped: number } {
   const matches = (listing: VehicleListing) => {
     const text = (value: string | null) => (value ?? "").toLowerCase();
+    // Seller type is filtered by URL path segment, so if KSL renames it the
+    // sweep would quietly fill with dealers. Re-checked locally for the same
+    // reason the other filters are.
+    if (query.forSaleByOwner) {
+      const seller = `${text(listing.sellerType)} ${text(listing.sellerName)}`;
+      if (/dealer|dealership|business|motors|auto sales/.test(seller)) return false;
+    }
     if (query.make && !text(listing.make).includes(query.make.toLowerCase())) return false;
     if (query.model && !text(listing.model).includes(query.model.toLowerCase())) return false;
     // A listing missing the field is kept: absent is not the same as failing.
